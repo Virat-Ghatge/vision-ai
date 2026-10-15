@@ -4,7 +4,7 @@ import { defineConfig } from 'wxt';
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: {
-    name: 'OrbitAgent - Ultra-Low-Token Multi-LLM Chrome Agent',
+    name: 'Vision AI - Ultra-Low-Token Multi-LLM Chrome Agent',
     description: 'Autonomous Chrome browser agent with 4-layer token distillation, multi-LLM routing, and CDP hardware execution.',
     version: '0.1.0',
     permissions: [
@@ -18,7 +18,7 @@ export default defineConfig({
     ],
     host_permissions: ['<all_urls>'],
     action: {
-      default_title: 'Open OrbitAgent Sidepanel',
+      default_title: 'Open Vision AI Sidepanel',
     },
     side_panel: {
       default_path: 'sidepanel.html',

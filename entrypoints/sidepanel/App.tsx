@@ -113,7 +113,7 @@ export default function App(): React.JSX.Element {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-tight flex items-center gap-1.5">
-              OrbitAgent
+              Vision AI
               <span className="text-[9px] bg-slate-800 text-orbit-accent border border-slate-700 px-1.5 py-0.2 rounded font-mono font-normal">
                 v0.1
               </span>

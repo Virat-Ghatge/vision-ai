@@ -7,7 +7,7 @@ export interface TokenEstimationMetrics {
   estimatedCostDiscountPercent: number;
 }
 
-export const AGENT_SYSTEM_PROMPT = `You are OrbitAgent, an ultra-low-token autonomous Chrome browser agent.
+export const AGENT_SYSTEM_PROMPT = `You are Vision AI, an ultra-low-token autonomous Chrome browser agent.
 Your objective is to accomplish the user's browser goal efficiently.
 
 AVAILABLE MACRO ACTIONS:

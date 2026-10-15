@@ -134,7 +134,7 @@ describe('M3: CDP Actuator, Speculative Macro-Batch Runner & Vision Fallback Sui
       const id = registry.register(button);
       const overlay = renderSetOfMarksOverlay([{ id, element: button }], document);
 
-      expect(overlay.id).toBe('orbit-agent-som-overlay');
+      expect(overlay.id).toBe('vision-ai-som-overlay');
       expect(overlay.style.position).toBe('fixed');
       expect(overlay.style.pointerEvents).toBe('none');
     });

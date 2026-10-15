@@ -3,9 +3,9 @@ name: token-budget
 description: Ultra-low-token budget architecture and byte-stable prompt caching protocol for OrbitAgent
 ---
 
-# OrbitAgent Token Budget & Byte-Stable Prompt Caching Specification
+# Vision AI Token Budget & Byte-Stable Prompt Caching Specification
 
-This skill documents the hard budget limits and cache-stabilization invariants that OrbitAgent must maintain on every browser interaction.
+This skill documents the hard budget limits and cache-stabilization invariants that Vision AI must maintain on every browser interaction.
 
 ## 1. Hard Token Budget Caps
 1. **Viewport DOM Distillation:** Maximum **800 tokens** per full observation (Step 1).

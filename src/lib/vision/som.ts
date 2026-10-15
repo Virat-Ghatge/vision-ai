@@ -25,7 +25,7 @@ export function renderSetOfMarksOverlay(
   targetDoc: Document = document
 ): HTMLCanvasElement {
   const canvas = targetDoc.createElement('canvas');
-  canvas.id = 'orbit-agent-som-overlay';
+  canvas.id = 'vision-ai-som-overlay';
   canvas.style.position = 'fixed';
   canvas.style.top = '0';
   canvas.style.left = '0';

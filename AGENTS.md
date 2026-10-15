@@ -1,7 +1,7 @@
-# AGENTS.md — OrbitAgent Development & Loop Architecture
+# AGENTS.md — Vision AI Development & Loop Architecture
 
 ## System Overview
-OrbitAgent is an ultra-low-token, multi-LLM autonomous Chrome agent browser extension built on Manifest V3 with WXT, React 19, TypeScript (strict), and Tailwind CSS.
+Vision AI is an ultra-low-token, multi-LLM autonomous Chrome agent browser extension built on Manifest V3 with WXT, React 19, TypeScript (strict), and Tailwind CSS.
 
 ## Architecture Guidelines
 1. **Byte-Stable Contexts:** All LLM conversation prefixes must remain 100% byte-stable across conversational turns to maximize Anthropic and Gemini prompt cache hit rates (>90% cache discount).

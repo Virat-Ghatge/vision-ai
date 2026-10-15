@@ -66,8 +66,8 @@ export class OpenRouterAdapter implements LLMProvider {
       headers: {
         'content-type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`,
-        'HTTP-Referer': 'https://orbitagent.dev',
-        'X-Title': 'OrbitAgent Chrome Extension',
+        'HTTP-Referer': 'https://visionai.dev',
+        'X-Title': 'Vision AI Chrome Extension',
       },
       body: JSON.stringify({
         model,

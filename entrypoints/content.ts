@@ -8,7 +8,7 @@ import { ExtensionMessage } from '../src/lib/agent/types';
 export default defineContentScript({
   matches: ['<all_urls>'],
   main() {
-    console.log('[OrbitAgent] Content script active with 4-layer distillation engine.');
+    console.log('[Vision AI] Content script active with 4-layer distillation engine.');
 
     const deltaTracker = new DOMDeltaTracker(globalElementRegistry);
     const executor = new MacroBatchExecutor({

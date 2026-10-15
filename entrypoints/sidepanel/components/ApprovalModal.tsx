@@ -37,7 +37,7 @@ export function ApprovalModal({ action, reason, onApprove, onReject }: Props): R
         )}
 
         <p className="text-[11px] text-slate-400">
-          OrbitAgent will pause execution until you grant permission.
+          Vision AI will pause execution until you grant permission.
         </p>
 
         <div className="flex items-center gap-2 pt-2 border-t border-orbit-border">

@@ -46,7 +46,7 @@ export function TaskStream({
             onChange={(e) => onPromptChange(e.target.value)}
             disabled={isRunning || isWaiting}
             rows={2}
-            placeholder="Describe what you want OrbitAgent to do in this browser tab..."
+            placeholder="Describe what you want Vision AI to do in this browser tab..."
             className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 placeholder-slate-500 focus:border-orbit-accent focus:outline-none resize-none font-sans"
           />
 
@@ -101,7 +101,7 @@ export function TaskStream({
                 disabled={!prompt.trim()}
                 className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-500 to-orbit-neon hover:from-emerald-400 hover:to-orbit-500 disabled:opacity-40 text-slate-950 font-bold rounded-lg text-xs shadow-md transition-all ml-auto"
               >
-                <Sparkles className="w-3.5 h-3.5" /> Launch OrbitAgent
+                <Sparkles className="w-3.5 h-3.5" /> Launch Vision AI
               </button>
             )}
           </div>

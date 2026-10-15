@@ -4,7 +4,7 @@ import { AgentStateMachine } from '../src/lib/agent/stateMachine';
 import { ExtensionMessage } from '../src/lib/agent/types';
 
 export default defineBackground(() => {
-  console.log('[OrbitAgent] Service Worker background loop initialized.');
+  console.log('[Vision AI] Service Worker background loop initialized.');
 
   // Default initial router configuration
   const router = new LLMRouter({

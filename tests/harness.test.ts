@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { openDB } from 'idb';
 
-describe('OrbitAgent Test Harness & Environment', () => {
+describe('Vision AI Test Harness & Environment', () => {
   it('loads fake-indexeddb in happy-dom environment', async () => {
     const db = await openDB('test-harness-db', 1, {
       upgrade(database) {
