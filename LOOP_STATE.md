@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M4.2`
+- **Task ID:** `M4.3`
 - **Status:** `[-]` In Progress
-- **Started At:** 2026-10-15T14:47:35+05:30
-- **Goal:** Implement `IndexedDB` Skill Store and post-run Tier-2 skill compilation.
+- **Started At:** 2026-10-15T14:48:45+05:30
+- **Goal:** Add Human-in-the-Loop safety interceptor for destructive actions (`submit`, `delete`, `purchase`, `send`).
 
 ---
 
@@ -31,8 +31,8 @@
 
 ### Milestone 4: Stateful Background Agent Loop & IndexedDB Skill Compiler
 - [x] `M4.1` Build the Service Worker state machine (`Observe -> Check Skill Cache -> Route LLM -> Execute Macro-Batch -> Diff`).
-- [-] `M4.2` Implement `IndexedDB` Skill Store and post-run Tier-2 skill compilation.
-- [ ] `M4.3` Add Human-in-the-Loop safety interceptor for destructive actions (`submit`, `delete`, `purchase`, `send`).
+- [x] `M4.2` Implement `IndexedDB` Skill Store and post-run Tier-2 skill compilation.
+- [-] `M4.3` Add Human-in-the-Loop safety interceptor for destructive actions (`submit`, `delete`, `purchase`, `send`).
 
 ### Milestone 5: Side Panel UI & Live Browser Verification
 - [ ] `M5.1` Build React Side Panel UI: Chat/Task stream, Provider API Key Vault, Tier Router selector, Live Token Savings Counter (Cached vs. Uncached tokens), and Saved Skills drawer.
@@ -55,6 +55,7 @@
 | 10 | M3.2 | PASS (0 errors) | PASS (13 tests) | PASS (259.01 kB bundle) | N/A (Macro Runner) | MacroBatchExecutor with 120ms debounce and validation/abort circuit breakers |
 | 11 | M3.3 | PASS (0 errors) | PASS (20 tests) | PASS (259.03 kB bundle) | N/A (Vision Core) | Implemented som.ts overlay renderer and WebP cropped vision extractor |
 | 12 | M4.1 | PASS (0 errors) | PASS (20 tests) | PASS (293.06 kB bundle) | N/A (Service Worker) | Stateful Service Worker Agent Loop with Observe-Skill-Route-Act-Diff pipeline |
+| 13 | M4.2 | PASS (0 errors) | PASS (20 tests) | PASS (293.06 kB bundle) | N/A (Skill Store) | Implemented IndexedDB SkillStore with zero-token matching and Tier-2 compiler |
 
 ---
 
