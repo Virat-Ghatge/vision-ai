@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M2.1`
+- **Task ID:** `M2.2`
 - **Status:** `[-]` In Progress
-- **Started At:** 2026-10-15T14:34:10+05:30
-- **Goal:** Build `distiller.ts` with numeric `[ID]` tagging, visibility filtering, and `WeakRef` registry.
+- **Started At:** 2026-10-15T14:35:15+05:30
+- **Goal:** Build `delta.ts` using `MutationObserver` to emit compact `ADDED / MODIFIED / REMOVED` diffs.
 
 ---
 
@@ -20,8 +20,8 @@
 - [x] `M1.3` Write Vitest suite verifying Anthropic `cache_control` placement, tiered routing selection, and byte-identical prefixes across 5 simulated steps.
 
 ### Milestone 2: DOM Distiller & Mutation Delta Engine
-- [-] `M2.1` Build `distiller.ts` with numeric `[ID]` tagging, visibility filtering, and `WeakRef` registry.
-- [ ] `M2.2` Build `delta.ts` using `MutationObserver` to emit compact `ADDED / MODIFIED / REMOVED` diffs.
+- [x] `M2.1` Build `distiller.ts` with numeric `[ID]` tagging, visibility filtering, and `WeakRef` registry.
+- [-] `M2.2` Build `delta.ts` using `MutationObserver` to emit compact `ADDED / MODIFIED / REMOVED` diffs.
 - [ ] `M2.3` Write Vitest benchmark feeding a complex 1,000-node mock e-commerce/GitHub DOM and asserting output is under 800 tokens and diffs are under 100 tokens.
 
 ### Milestone 3: CDP Hardware Actuator, Macro-Batch Runner & SoM Vision
@@ -48,6 +48,7 @@
 | 3 | M1.1 | PASS (0 errors) | PASS (2 tests) | PASS (258.96 kB bundle) | N/A (Router Core) | Implemented LLMRouter and adapters (Anthropic, Gemini, Groq, OpenRouter, Ollama) |
 | 4 | M1.2 | PASS (0 errors) | PASS (2 tests) | PASS (258.96 kB bundle) | N/A (Context Core) | Implemented ByteStableContextManager with prefix hash and token estimator |
 | 5 | M1.3 | PASS (0 errors) | PASS (10 tests) | PASS (258.96 kB bundle) | N/A (Test Suite) | Full unit test suite for routing, cache headers, and 5-step prefix immutability |
+| 6 | M2.1 | PASS (0 errors) | PASS (10 tests) | PASS (259.01 kB bundle) | N/A (Distiller Core) | Built distiller.ts with WeakRef registry, visibility filter, and integer tagging |
 
 ---
 
