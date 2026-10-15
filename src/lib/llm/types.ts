@@ -80,7 +80,9 @@ export interface RouterConfig {
   openRouterModel?: string;
   openRouterFallbackModels?: string[];
   groqModel?: string;
+  groqFallbackModels?: string[];
   geminiModel?: string;
+  geminiFallbackModels?: string[];
   anthropicModel?: string;
   autoFallbackOnLimit?: boolean;
 }

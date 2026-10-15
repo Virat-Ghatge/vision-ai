@@ -18,23 +18,18 @@ import {
   fetchLiveOpenRouterModels,
   FALLBACK_OPENROUTER_MODELS,
 } from '../../../src/lib/llm/openrouterModels';
+import {
+  ProviderModelInfo,
+  fetchLiveGroqModels,
+  FALLBACK_GROQ_MODELS,
+  fetchLiveGeminiModels,
+  FALLBACK_GEMINI_MODELS,
+} from '../../../src/lib/llm/providerModels';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const GROQ_MODELS = [
-  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile (Fast)' },
-  { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant (Ultra-fast)' },
-  { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B (MoE)' },
-];
-
-const GEMINI_MODELS = [
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Fast & Vision)' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Stable)' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Deep Reasoning)' },
-];
 
 const ANTHROPIC_MODELS = [
   { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet (Hybrid Reasoning)' },
@@ -54,19 +49,32 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
   const [tier1Pref, setTier1Pref] = useState<'groq' | 'gemini' | 'openrouter'>('openrouter');
   const [tier2Pref, setTier2Pref] = useState<'anthropic' | 'gemini' | 'openrouter'>('openrouter');
 
-  // Dynamic OpenRouter models (just like Dassi AI)
+  // Dynamic OpenRouter models
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModelInfo[]>(FALLBACK_OPENROUTER_MODELS);
-  const [isFetchingModels, setIsFetchingModels] = useState(false);
-  const [filterQuery, setFilterQuery] = useState('');
+  const [isFetchingOpenRouter, setIsFetchingOpenRouter] = useState(false);
+  const [openRouterFilter, setOpenRouterFilter] = useState('');
   const [showFreeOnly, setShowFreeOnly] = useState(true);
-
-  // Active models
   const [openRouterModel, setOpenRouterModel] = useState('openrouter/free');
   const [customOpenRouter, setCustomOpenRouter] = useState('');
   const [isCustomOpenRouter, setIsCustomOpenRouter] = useState(false);
 
+  // Dynamic Groq models
+  const [groqModels, setGroqModels] = useState<ProviderModelInfo[]>(FALLBACK_GROQ_MODELS);
+  const [isFetchingGroq, setIsFetchingGroq] = useState(false);
+  const [groqFilter, setGroqFilter] = useState('');
   const [groqModel, setGroqModel] = useState('llama-3.3-70b-versatile');
+  const [customGroq, setCustomGroq] = useState('');
+  const [isCustomGroq, setIsCustomGroq] = useState(false);
+
+  // Dynamic Gemini models
+  const [geminiModels, setGeminiModels] = useState<ProviderModelInfo[]>(FALLBACK_GEMINI_MODELS);
+  const [isFetchingGemini, setIsFetchingGemini] = useState(false);
+  const [geminiFilter, setGeminiFilter] = useState('');
   const [geminiModel, setGeminiModel] = useState('gemini-2.0-flash');
+  const [customGemini, setCustomGemini] = useState('');
+  const [isCustomGemini, setIsCustomGemini] = useState(false);
+
+  // Anthropic model
   const [anthropicModel, setAnthropicModel] = useState('claude-3-7-sonnet-20250219');
 
   // Auto-switch failover
@@ -92,8 +100,8 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
           if (cfg.preferredTier1Provider) setTier1Pref(cfg.preferredTier1Provider);
           if (cfg.preferredTier2Provider) setTier2Pref(cfg.preferredTier2Provider);
 
+          // OpenRouter
           if (cfg.openRouterModel) {
-            // Automatically migrate away from retired meta-llama 70b free slug if previously saved
             if (cfg.openRouterModel.includes('meta-llama/llama-3.3-70b-instruct:free')) {
               setOpenRouterModel('openrouter/free');
               setIsCustomOpenRouter(false);
@@ -101,31 +109,62 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
               setOpenRouterModel(cfg.openRouterModel);
             }
           }
-          if (cfg.groqModel) setGroqModel(cfg.groqModel);
-          if (cfg.geminiModel) setGeminiModel(cfg.geminiModel);
+
+          // Groq
+          if (cfg.groqModel) {
+            setGroqModel(cfg.groqModel);
+          }
+
+          // Gemini
+          if (cfg.geminiModel) {
+            setGeminiModel(cfg.geminiModel);
+          }
+
           if (cfg.anthropicModel) setAnthropicModel(cfg.anthropicModel);
           if (typeof cfg.autoFallbackOnLimit === 'boolean') {
             setAutoFallback(cfg.autoFallbackOnLimit);
           }
         }
 
-        // Fetch live OpenRouter models
-        loadLiveModels(currentKeys.openrouter, false);
+        // Fetch live models
+        loadLiveOpenRouter(currentKeys.openrouter, false);
+        loadLiveGroq(currentKeys.groq, false);
+        loadLiveGemini(currentKeys.gemini, false);
       });
     } else {
-      loadLiveModels(keys.openrouter, false);
+      loadLiveOpenRouter(keys.openrouter, false);
+      loadLiveGroq(keys.groq, false);
+      loadLiveGemini(keys.gemini, false);
     }
   }, [isOpen]);
 
-  const loadLiveModels = async (apiKey?: string, force = false) => {
-    setIsFetchingModels(true);
+  const loadLiveOpenRouter = async (apiKey?: string, force = false) => {
+    setIsFetchingOpenRouter(true);
     try {
       const models = await fetchLiveOpenRouterModels(apiKey, force);
-      if (models.length > 0) {
-        setOpenRouterModels(models);
-      }
+      if (models.length > 0) setOpenRouterModels(models);
     } finally {
-      setIsFetchingModels(false);
+      setIsFetchingOpenRouter(false);
+    }
+  };
+
+  const loadLiveGroq = async (apiKey?: string, force = false) => {
+    setIsFetchingGroq(true);
+    try {
+      const models = await fetchLiveGroqModels(apiKey, force);
+      if (models.length > 0) setGroqModels(models);
+    } finally {
+      setIsFetchingGroq(false);
+    }
+  };
+
+  const loadLiveGemini = async (apiKey?: string, force = false) => {
+    setIsFetchingGemini(true);
+    try {
+      const models = await fetchLiveGeminiModels(apiKey, force);
+      if (models.length > 0) setGeminiModels(models);
+    } finally {
+      setIsFetchingGemini(false);
     }
   };
 
@@ -136,13 +175,17 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
   const handleSave = async () => {
     const finalOpenRouterModel =
       isCustomOpenRouter && customOpenRouter.trim() ? customOpenRouter.trim() : openRouterModel;
+    const finalGroqModel =
+      isCustomGroq && customGroq.trim() ? customGroq.trim() : groqModel;
+    const finalGeminiModel =
+      isCustomGemini && customGemini.trim() ? customGemini.trim() : geminiModel;
 
     const routingConfig: Partial<RouterConfig> = {
       preferredTier1Provider: tier1Pref,
       preferredTier2Provider: tier2Pref,
       openRouterModel: finalOpenRouterModel,
-      groqModel,
-      geminiModel,
+      groqModel: finalGroqModel,
+      geminiModel: finalGeminiModel,
       anthropicModel,
       autoFallbackOnLimit: autoFallback,
     };
@@ -163,11 +206,23 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
 
   if (!isOpen) return null;
 
-  // Filter models for OpenRouter picker
-  const filteredModels = openRouterModels.filter((m) => {
+  // Filtered lists
+  const filteredOpenRouter = openRouterModels.filter((m) => {
     if (showFreeOnly && !m.isFree) return false;
-    if (!filterQuery) return true;
-    const q = filterQuery.toLowerCase();
+    if (!openRouterFilter) return true;
+    const q = openRouterFilter.toLowerCase();
+    return m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+  });
+
+  const filteredGroq = groqModels.filter((m) => {
+    if (!groqFilter) return true;
+    const q = groqFilter.toLowerCase();
+    return m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+  });
+
+  const filteredGemini = geminiModels.filter((m) => {
+    if (!geminiFilter) return true;
+    const q = geminiFilter.toLowerCase();
     return m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
   });
 
@@ -192,7 +247,7 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
         <div className="flex items-start gap-2 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 text-[11px] text-slate-400">
           <ShieldCheck className="w-4 h-4 text-orbit-neon shrink-0 mt-0.5" />
           <span>
-            Choose models across providers (just like Dassi AI). OpenRouter models are dynamically discovered and verified.
+            Choose models across providers (just like Dassi AI). OpenRouter, Groq, and Gemini models are dynamically discovered and auto-failover enabled.
           </span>
         </div>
 
@@ -204,7 +259,7 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
               Auto-Switch on Rate/Usage Limit (404/429)
             </span>
             <span className="text-[10px] text-slate-400">
-              If a model becomes unavailable for free or hits quota, auto-switch to a free fallback model without interrupting ongoing tasks.
+              If any model is rate-limited, decommissioned, or quota-exhausted, auto-switch to a fallback model without interrupting ongoing tasks.
             </span>
           </div>
           <label className="relative inline-flex items-center cursor-pointer shrink-0">
@@ -256,21 +311,18 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
                 <Sparkles className="w-3.5 h-3.5 text-orbit-neon" />
                 OpenRouter Model Picker
               </label>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => loadLiveModels(keys.openrouter, true)}
-                  disabled={isFetchingModels}
-                  className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded border border-slate-700 transition-colors"
-                  title="Fetch latest models from OpenRouter API"
-                >
-                  <RotateCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
-                  {isFetchingModels ? 'Fetching...' : 'Refresh'}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => loadLiveOpenRouter(keys.openrouter, true)}
+                disabled={isFetchingOpenRouter}
+                className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded border border-slate-700 transition-colors"
+                title="Fetch latest models from OpenRouter API"
+              >
+                <RotateCw className={`w-3 h-3 ${isFetchingOpenRouter ? 'animate-spin' : ''}`} />
+                {isFetchingOpenRouter ? 'Fetching...' : 'Refresh'}
+              </button>
             </div>
 
-            {/* Key Input */}
             <div className="relative">
               <input
                 type={showKey.openrouter ? 'text' : 'password'}
@@ -288,13 +340,12 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
               </button>
             </div>
 
-            {/* Filter and Category Controls */}
             <div className="flex items-center gap-2 pt-1">
               <div className="relative flex-1">
                 <input
                   type="text"
-                  value={filterQuery}
-                  onChange={(e) => setFilterQuery(e.target.value)}
+                  value={openRouterFilter}
+                  onChange={(e) => setOpenRouterFilter(e.target.value)}
                   placeholder="Filter models (e.g. gemma, free)..."
                   className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200 pl-6 focus:border-orbit-neon focus:outline-none"
                 />
@@ -313,7 +364,6 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
               </button>
             </div>
 
-            {/* Model Selector Dropdown */}
             <div className="flex flex-col gap-1">
               <select
                 value={isCustomOpenRouter ? 'custom' : openRouterModel}
@@ -327,11 +377,11 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
                 }}
                 className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 focus:border-orbit-neon focus:outline-none"
               >
-                {filteredModels.map((m) => (
+                {filteredOpenRouter.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.id === 'openrouter/free'
                       ? '⭐ openrouter/free (Official Auto-Failover Router)'
-                      : `${m.name} ${m.isFree ? '• [FREE]' : ''} (${Math.round(m.contextLength / 1000)}k ctx)`}
+                      : `${m.name} ${m.isFree ? '• [FREE]' : ''} (${Math.round((m.contextLength ?? 0) / 1000)}k ctx)`}
                   </option>
                 ))}
                 <option value="custom">✏️ Enter Custom Model Slug...</option>
@@ -346,21 +396,28 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
                   className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs font-mono focus:border-orbit-neon focus:outline-none text-slate-200 mt-1"
                 />
               )}
-
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                💡 <code className="text-orbit-neon">openrouter/free</code> automatically routes to the best live free model on OpenRouter and never 404s.
-              </p>
             </div>
           </div>
 
           {/* Groq Section */}
           <div className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800 flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-200">Groq (Ultra-Low Latency)</label>
-              <span className="text-[10px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded border border-cyan-500/20">
-                500+ tok/s
-              </span>
+              <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                Groq Model Picker (500+ tok/s)
+              </label>
+              <button
+                type="button"
+                onClick={() => loadLiveGroq(keys.groq, true)}
+                disabled={isFetchingGroq}
+                className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded border border-slate-700 transition-colors"
+                title="Fetch latest models from Groq API"
+              >
+                <RotateCw className={`w-3 h-3 ${isFetchingGroq ? 'animate-spin' : ''}`} />
+                {isFetchingGroq ? 'Fetching...' : 'Refresh'}
+              </button>
             </div>
+
             <div className="relative">
               <input
                 type={showKey.groq ? 'text' : 'password'}
@@ -377,30 +434,70 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
                 {showKey.groq ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
+
+            <div className="relative pt-1">
+              <input
+                type="text"
+                value={groqFilter}
+                onChange={(e) => setGroqFilter(e.target.value)}
+                placeholder="Filter Groq models (e.g. llama, instant)..."
+                className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200 pl-6 focus:border-orbit-neon focus:outline-none"
+              />
+              <Search className="w-3 h-3 text-slate-500 absolute left-2 top-3" />
+            </div>
+
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-400 font-medium">Groq Model:</label>
               <select
-                value={groqModel}
-                onChange={(e) => setGroqModel(e.target.value)}
+                value={isCustomGroq ? 'custom' : groqModel}
+                onChange={(e) => {
+                  if (e.target.value === 'custom') {
+                    setIsCustomGroq(true);
+                  } else {
+                    setIsCustomGroq(false);
+                    setGroqModel(e.target.value);
+                  }
+                }}
                 className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 focus:border-orbit-neon focus:outline-none"
               >
-                {GROQ_MODELS.map((m) => (
+                {filteredGroq.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name}
+                    {m.name} {m.contextLength ? `(${Math.round(m.contextLength / 1000)}k ctx)` : ''}
                   </option>
                 ))}
+                <option value="custom">✏️ Enter Custom Model Slug...</option>
               </select>
+
+              {isCustomGroq && (
+                <input
+                  type="text"
+                  value={customGroq}
+                  onChange={(e) => setCustomGroq(e.target.value)}
+                  placeholder="e.g. llama-3.3-70b-versatile or mixtral-8x7b-32768"
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs font-mono focus:border-orbit-neon focus:outline-none text-slate-200 mt-1"
+                />
+              )}
             </div>
           </div>
 
           {/* Google Gemini Section */}
           <div className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800 flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-200">Google Gemini (Native Vision)</label>
-              <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20">
-                Multimodal
-              </span>
+              <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-purple-400" />
+                Google Gemini Model Picker (Native Vision)
+              </label>
+              <button
+                type="button"
+                onClick={() => loadLiveGemini(keys.gemini, true)}
+                disabled={isFetchingGemini}
+                className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded border border-slate-700 transition-colors"
+                title="Fetch latest models from Gemini API"
+              >
+                <RotateCw className={`w-3 h-3 ${isFetchingGemini ? 'animate-spin' : ''}`} />
+                {isFetchingGemini ? 'Fetching...' : 'Refresh'}
+              </button>
             </div>
+
             <div className="relative">
               <input
                 type={showKey.gemini ? 'text' : 'password'}
@@ -417,19 +514,48 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
                 {showKey.gemini ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </div>
+
+            <div className="relative pt-1">
+              <input
+                type="text"
+                value={geminiFilter}
+                onChange={(e) => setGeminiFilter(e.target.value)}
+                placeholder="Filter Gemini models (e.g. 2.0, flash)..."
+                className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200 pl-6 focus:border-orbit-neon focus:outline-none"
+              />
+              <Search className="w-3 h-3 text-slate-500 absolute left-2 top-3" />
+            </div>
+
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-400 font-medium">Gemini Model:</label>
               <select
-                value={geminiModel}
-                onChange={(e) => setGeminiModel(e.target.value)}
+                value={isCustomGemini ? 'custom' : geminiModel}
+                onChange={(e) => {
+                  if (e.target.value === 'custom') {
+                    setIsCustomGemini(true);
+                  } else {
+                    setIsCustomGemini(false);
+                    setGeminiModel(e.target.value);
+                  }
+                }}
                 className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 focus:border-orbit-neon focus:outline-none"
               >
-                {GEMINI_MODELS.map((m) => (
+                {filteredGemini.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name}
+                    {m.name} {m.isFree ? '• [FREE TIER]' : ''}
                   </option>
                 ))}
+                <option value="custom">✏️ Enter Custom Model Slug...</option>
               </select>
+
+              {isCustomGemini && (
+                <input
+                  type="text"
+                  value={customGemini}
+                  onChange={(e) => setCustomGemini(e.target.value)}
+                  placeholder="e.g. gemini-2.0-flash or gemini-1.5-pro"
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs font-mono focus:border-orbit-neon focus:outline-none text-slate-200 mt-1"
+                />
+              )}
             </div>
           </div>
 

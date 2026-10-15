@@ -80,13 +80,16 @@ export class GroqAdapter implements LLMProvider {
 
     if (!response.ok) {
       const errText = await response.text();
-      const isLimit =
+      const isLimitOrUnavailable =
         response.status === 429 ||
         response.status === 402 ||
-        /rate limit|rate_limit|quota|token limit|tpm|rpm/i.test(errText);
-      if (isLimit) {
+        response.status === 404 ||
+        response.status === 502 ||
+        response.status === 503 ||
+        /rate limit|rate_limit|quota|token limit|tpm|rpm|decommissioned|not found|does not exist|unavailable/i.test(errText);
+      if (isLimitOrUnavailable) {
         throw new UsageLimitError(
-          `Groq rate limit or quota exceeded (${response.status}): ${errText}`,
+          `Groq model unavailable or rate limit exceeded (${response.status}): ${errText}`,
           'groq',
           model,
           response.status
@@ -98,8 +101,8 @@ export class GroqAdapter implements LLMProvider {
     const data = (await response.json()) as OpenAIChatResponse;
     if (data.error) {
       const msg = data.error.message ?? 'Unknown';
-      if (/rate limit|rate_limit|quota|token limit|tpm|rpm/i.test(msg)) {
-        throw new UsageLimitError(`Groq error: ${msg}`, 'groq', model);
+      if (/rate limit|rate_limit|quota|token limit|tpm|rpm|decommissioned|not found|does not exist|unavailable/i.test(msg)) {
+        throw new UsageLimitError(`Groq model error: ${msg}`, 'groq', model);
       }
       throw new Error(`Groq error: ${msg}`);
     }

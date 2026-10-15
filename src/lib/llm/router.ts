@@ -23,6 +23,21 @@ export const DEFAULT_OPENROUTER_FALLBACKS = [
   'liquid/lfm-2.5-2.6b:free',
 ];
 
+export const DEFAULT_GROQ_FALLBACKS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
+  'deepseek-r1-distill-llama-70b',
+  'mixtral-8x7b-32768',
+  'gemma2-9b-it',
+];
+
+export const DEFAULT_GEMINI_FALLBACKS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+];
+
 export interface StepExecutionResult {
   response: AgentPlanResponse;
   activeTier: RouterTier;
@@ -64,6 +79,19 @@ export class LLMRouter {
 
   getConsecutiveFailures(): number {
     return this.consecutiveFailures;
+  }
+
+  private persistModelPreference(field: keyof RouterConfig, value: string): void {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get('modelRoutingConfig').then((res) => {
+        const current = (res.modelRoutingConfig as Record<string, unknown>) || {};
+        chrome.storage.local
+          .set({
+            modelRoutingConfig: { ...current, [field]: value },
+          })
+          .catch(() => {});
+      });
+    }
   }
 
   /**
@@ -239,7 +267,7 @@ export class LLMRouter {
         `[Vision AI Router] Model unavailable or limit reached on ${provider.providerType} (${activeModel}). Attempting automatic seamless model switch...`
       );
 
-      // Strategy 1: If OpenRouter, try next model in fallback list
+      // Strategy 1: Intra-provider model fallback
       if (provider.providerType === 'openrouter') {
         const fallbacks =
           this.config.openRouterFallbackModels && this.config.openRouterFallbackModels.length > 0
@@ -254,18 +282,8 @@ export class LLMRouter {
               ...options,
               model: candidateModel,
             });
-            // Update active model so subsequent turns use the working model without interrupting
             this.config.openRouterModel = candidateModel;
-            if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-              chrome.storage.local.get('modelRoutingConfig').then((res) => {
-                const current = (res.modelRoutingConfig as Record<string, unknown>) || {};
-                chrome.storage.local
-                  .set({
-                    modelRoutingConfig: { ...current, openRouterModel: candidateModel },
-                  })
-                  .catch(() => {});
-              });
-            }
+            this.persistModelPreference('openRouterModel', candidateModel);
             return {
               response: plan,
               activeTier,
@@ -275,6 +293,60 @@ export class LLMRouter {
             };
           } catch (nextErr) {
             console.warn(`[Vision AI Router] Fallback candidate ${candidateModel} also failed:`, nextErr);
+          }
+        }
+      } else if (provider.providerType === 'groq') {
+        const fallbacks =
+          this.config.groqFallbackModels && this.config.groqFallbackModels.length > 0
+            ? this.config.groqFallbackModels
+            : DEFAULT_GROQ_FALLBACKS;
+
+        for (const candidateModel of fallbacks) {
+          if (candidateModel === activeModel) continue;
+          try {
+            console.log(`[Vision AI Router] Auto-switching to Groq fallback model: ${candidateModel}`);
+            const plan = await provider.chat(messages, {
+              ...options,
+              model: candidateModel,
+            });
+            this.config.groqModel = candidateModel;
+            this.persistModelPreference('groqModel', candidateModel);
+            return {
+              response: plan,
+              activeTier,
+              provider: 'groq',
+              modelUsed: candidateModel,
+              fallbackNotice: `Auto-switched to Groq ${candidateModel} (${activeModel} was unavailable/limited)`,
+            };
+          } catch (nextErr) {
+            console.warn(`[Vision AI Router] Groq fallback candidate ${candidateModel} failed:`, nextErr);
+          }
+        }
+      } else if (provider.providerType === 'gemini') {
+        const fallbacks =
+          this.config.geminiFallbackModels && this.config.geminiFallbackModels.length > 0
+            ? this.config.geminiFallbackModels
+            : DEFAULT_GEMINI_FALLBACKS;
+
+        for (const candidateModel of fallbacks) {
+          if (candidateModel === activeModel) continue;
+          try {
+            console.log(`[Vision AI Router] Auto-switching to Gemini fallback model: ${candidateModel}`);
+            const plan = await provider.chat(messages, {
+              ...options,
+              model: candidateModel,
+            });
+            this.config.geminiModel = candidateModel;
+            this.persistModelPreference('geminiModel', candidateModel);
+            return {
+              response: plan,
+              activeTier,
+              provider: 'gemini',
+              modelUsed: candidateModel,
+              fallbackNotice: `Auto-switched to Gemini ${candidateModel} (${activeModel} was unavailable/limited)`,
+            };
+          } catch (nextErr) {
+            console.warn(`[Vision AI Router] Gemini fallback candidate ${candidateModel} failed:`, nextErr);
           }
         }
       }

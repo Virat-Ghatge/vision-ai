@@ -113,12 +113,15 @@ export class GeminiAdapter implements LLMProvider {
 
     if (!response.ok) {
       const errText = await response.text();
-      const isLimit =
+      const isLimitOrUnavailable =
         response.status === 429 ||
-        /resource_exhausted|quota|rate limit|rate_limit/i.test(errText);
-      if (isLimit) {
+        response.status === 404 ||
+        response.status === 502 ||
+        response.status === 503 ||
+        /resource_exhausted|quota|rate limit|rate_limit|not found|deprecated|unavailable/i.test(errText);
+      if (isLimitOrUnavailable) {
         throw new UsageLimitError(
-          `Gemini rate limit or quota exceeded (${response.status}): ${errText}`,
+          `Gemini model unavailable or quota exceeded (${response.status}): ${errText}`,
           'gemini',
           model,
           response.status
@@ -130,8 +133,8 @@ export class GeminiAdapter implements LLMProvider {
     const data = (await response.json()) as GeminiResponse;
     if (data.error) {
       const msg = data.error.message ?? 'Unknown';
-      if (/resource_exhausted|quota|rate limit|rate_limit/i.test(msg)) {
-        throw new UsageLimitError(`Gemini error: ${msg}`, 'gemini', model);
+      if (/resource_exhausted|quota|rate limit|rate_limit|not found|deprecated|unavailable/i.test(msg)) {
+        throw new UsageLimitError(`Gemini model error: ${msg}`, 'gemini', model);
       }
       throw new Error(`Gemini error: ${msg}`);
     }

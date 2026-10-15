@@ -445,5 +445,120 @@ describe('M1.3: Multi-Provider Router & Byte-Stable Context Manager Suite', () =
       expect(result.response.thought).toBe('OpenRouter fallback executed');
       expect(result.fallbackNotice).toContain('openrouter');
     });
+
+    it('automatically switches Groq model on 404 decommissioned or 429 rate limit', async () => {
+      let callCount = 0;
+      const modelsCalled: string[] = [];
+
+      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+        callCount++;
+        const body = JSON.parse(init.body as string);
+        modelsCalled.push(body.model);
+
+        if (callCount === 1) {
+          // Model decommissioned / 404
+          return {
+            ok: false,
+            status: 404,
+            text: async () => 'model_decommissioned: The model is decommissioned',
+          };
+        }
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    thought: 'Groq fallback model succeeded',
+                    actions: [{ type: 'wait' }],
+                    complete: true,
+                  }),
+                },
+              },
+            ],
+          }),
+        };
+      });
+
+      const router = new LLMRouter({
+        apiKeys: { groq: 'gsk-test' },
+        preferredTier1Provider: 'groq',
+        groqModel: 'llama-3.3-70b-versatile',
+        groqFallbackModels: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
+        autoFallbackOnLimit: true,
+      });
+
+      const result = await router.executeStep([{ role: 'user', content: 'test' }], 1);
+
+      expect(callCount).toBe(2);
+      expect(modelsCalled[0]).toBe('llama-3.3-70b-versatile');
+      expect(modelsCalled[1]).toBe('llama-3.1-8b-instant');
+      expect(result.provider).toBe('groq');
+      expect(result.modelUsed).toBe('llama-3.1-8b-instant');
+      expect(result.fallbackNotice).toContain('llama-3.1-8b-instant');
+      expect(router.getConfig().groqModel).toBe('llama-3.1-8b-instant');
+    });
+
+    it('automatically switches Gemini model on RESOURCE_EXHAUSTED or 429 quota error', async () => {
+      let callCount = 0;
+      const modelsCalled: string[] = [];
+
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string, _init: RequestInit) => {
+        callCount++;
+        const modelMatch = url.match(/models\/([^:]+):generateContent/);
+        if (modelMatch) modelsCalled.push(modelMatch[1]);
+
+        if (callCount === 1) {
+          return {
+            ok: false,
+            status: 429,
+            text: async () => 'RESOURCE_EXHAUSTED: Quota exceeded for quota group GenerateContentRequestsPerMinute',
+          };
+        }
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify({
+                        thought: 'Gemini fallback model completed step',
+                        actions: [{ type: 'click', id: 10 }],
+                        complete: true,
+                      }),
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        };
+      });
+
+      const router = new LLMRouter({
+        apiKeys: { gemini: 'aiza-test' },
+        preferredTier1Provider: 'gemini',
+        geminiModel: 'gemini-2.0-flash',
+        geminiFallbackModels: ['gemini-2.0-flash', 'gemini-1.5-flash'],
+        autoFallbackOnLimit: true,
+      });
+
+      const result = await router.executeStep([{ role: 'user', content: 'test' }], 1);
+
+      expect(callCount).toBe(2);
+      expect(modelsCalled[0]).toBe('gemini-2.0-flash');
+      expect(modelsCalled[1]).toBe('gemini-1.5-flash');
+      expect(result.provider).toBe('gemini');
+      expect(result.modelUsed).toBe('gemini-1.5-flash');
+      expect(result.fallbackNotice).toContain('gemini-1.5-flash');
+      expect(router.getConfig().geminiModel).toBe('gemini-1.5-flash');
+    });
   });
 });
