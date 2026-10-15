@@ -52,7 +52,6 @@ export class DOMDeltaTracker {
 
   stop(): void {
     if (this.observer) {
-      // Drain any pending mutations
       const pending = this.observer.takeRecords();
       if (pending.length > 0) {
         this.handleMutations(pending);
@@ -60,6 +59,18 @@ export class DOMDeltaTracker {
       this.observer.disconnect();
       this.observer = null;
     }
+  }
+
+  recordAdded(el: HTMLElement): void {
+    this.addedElements.add(el);
+  }
+
+  recordModified(el: HTMLElement): void {
+    this.modifiedElements.add(el);
+  }
+
+  recordRemoved(id: number): void {
+    this.removedIds.add(id);
   }
 
   private handleMutations(mutations: MutationRecord[]): void {
@@ -90,12 +101,12 @@ export class DOMDeltaTracker {
         // Added nodes
         mutation.addedNodes.forEach((node) => {
           if (node instanceof HTMLElement) {
-            if (isCandidateNode(node)) {
+            if (isCandidateNode(node) || this.isAlertOrError(node)) {
               this.addedElements.add(node);
             }
             const candidates = node.querySelectorAll<HTMLElement>('*');
             candidates.forEach((child) => {
-              if (isCandidateNode(child)) {
+              if (isCandidateNode(child) || this.isAlertOrError(child)) {
                 this.addedElements.add(child);
               }
             });
@@ -103,15 +114,14 @@ export class DOMDeltaTracker {
         });
       } else if (mutation.type === 'attributes') {
         const target = mutation.target;
-        if (target instanceof HTMLElement && isCandidateNode(target)) {
-          // If already marked as added, keep it in added
+        if (target instanceof HTMLElement && (isCandidateNode(target) || this.isAlertOrError(target))) {
           if (!this.addedElements.has(target)) {
             this.modifiedElements.add(target);
           }
         }
       } else if (mutation.type === 'characterData') {
         const parent = mutation.target.parentElement;
-        if (parent && isCandidateNode(parent) && !this.addedElements.has(parent)) {
+        if (parent && (isCandidateNode(parent) || this.isAlertOrError(parent)) && !this.addedElements.has(parent)) {
           this.modifiedElements.add(parent);
         }
       }
@@ -191,9 +201,9 @@ export class DOMDeltaTracker {
     };
   }
 
-  private isAlertOrError(el: HTMLElement): boolean {
+  isAlertOrError(el: HTMLElement): boolean {
     const role = el.getAttribute('role');
-    if (role === 'alert' || role === 'status') return true;
+    if (role === 'alert' || role === 'status' || role === 'alertdialog') return true;
     if (el.getAttribute('aria-invalid') === 'true') return true;
 
     const classOrId = `${el.className} ${el.id}`.toLowerCase();

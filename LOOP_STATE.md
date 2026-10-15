@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M2.3`
+- **Task ID:** `M3.1`
 - **Status:** `[-]` In Progress
-- **Started At:** 2026-10-15T14:36:20+05:30
-- **Goal:** Write Vitest benchmark feeding a complex 1,000-node mock e-commerce/GitHub DOM and asserting output is under 800 tokens and diffs are under 100 tokens.
+- **Started At:** 2026-10-15T14:41:20+05:30
+- **Goal:** Implement `cdp/actuator.ts` (`chrome.debugger` mouse/keyboard dispatch) + synthetic fallback.
 
 ---
 
@@ -22,10 +22,10 @@
 ### Milestone 2: DOM Distiller & Mutation Delta Engine
 - [x] `M2.1` Build `distiller.ts` with numeric `[ID]` tagging, visibility filtering, and `WeakRef` registry.
 - [x] `M2.2` Build `delta.ts` using `MutationObserver` to emit compact `ADDED / MODIFIED / REMOVED` diffs.
-- [-] `M2.3` Write Vitest benchmark feeding a complex 1,000-node mock e-commerce/GitHub DOM and asserting output is under 800 tokens and diffs are under 100 tokens.
+- [x] `M2.3` Write Vitest benchmark feeding a complex 1,000-node mock e-commerce/GitHub DOM and asserting output is under 800 tokens and diffs are under 100 tokens.
 
 ### Milestone 3: CDP Hardware Actuator, Macro-Batch Runner & SoM Vision
-- [ ] `M3.1` Implement `cdp/actuator.ts` (`chrome.debugger` mouse/keyboard dispatch) + synthetic fallback.
+- [-] `M3.1` Implement `cdp/actuator.ts` (`chrome.debugger` mouse/keyboard dispatch) + synthetic fallback.
 - [ ] `M3.2` Implement speculative macro-batch executor with mid-batch validation/URL-change circuit breakers.
 - [ ] `M3.3` Implement `som.ts` canvas bounding-box renderer and cropped WebP extractor.
 
@@ -50,6 +50,7 @@
 | 5 | M1.3 | PASS (0 errors) | PASS (10 tests) | PASS (258.96 kB bundle) | N/A (Test Suite) | Full unit test suite for routing, cache headers, and 5-step prefix immutability |
 | 6 | M2.1 | PASS (0 errors) | PASS (10 tests) | PASS (259.01 kB bundle) | N/A (Distiller Core) | Built distiller.ts with WeakRef registry, visibility filter, and integer tagging |
 | 7 | M2.2 | PASS (0 errors) | PASS (10 tests) | PASS (259.01 kB bundle) | N/A (Delta Core) | Built delta.ts with MutationObserver and alert/error detection |
+| 8 | M2.3 | PASS (0 errors) | PASS (13 tests) | PASS (259.01 kB bundle) | N/A (Benchmark) | 1,000+ node DOM benchmark passed (<800 tokens viewport, <100 tokens delta) |
 
 ---
 

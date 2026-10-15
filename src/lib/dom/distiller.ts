@@ -65,7 +65,7 @@ export class ElementRegistry {
 export const globalElementRegistry = new ElementRegistry();
 
 const INTERACTIVE_TAGS = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']);
-const INTERACTIVE_ROLES = new Set([
+export const INTERACTIVE_ROLES = new Set([
   'button',
   'link',
   'checkbox',
@@ -77,40 +77,44 @@ const INTERACTIVE_ROLES = new Set([
   'switch',
   'textbox',
   'option',
+  'alert',
+  'status',
+  'dialog',
+  'alertdialog',
 ]);
-const LANDMARK_TAGS = new Set(['H1', 'H2', 'H3', 'NAV', 'MAIN', 'FORM', 'DIALOG']);
+const LANDMARK_TAGS = new Set(['H1', 'NAV', 'FORM', 'DIALOG']);
 
 /**
  * Checks if an element is visible in the current viewport.
  */
 export function isElementVisible(el: HTMLElement, win: Window = window): boolean {
   if (!el.isConnected) return false;
-  if (el.hasAttribute('hidden')) return false;
+  if (el.hasAttribute('hidden') || el.closest('[hidden]')) return false;
 
-  const style = win.getComputedStyle ? win.getComputedStyle(el) : null;
-  if (style) {
-    if (style.display === 'none') return false;
-    if (style.visibility === 'hidden') return false;
-    if (style.opacity === '0') return false;
+  let cur: HTMLElement | null = el;
+  while (cur) {
+    if (cur.style?.display === 'none' || cur.style?.visibility === 'hidden' || cur.style?.opacity === '0') {
+      return false;
+    }
+    const curStyle = win.getComputedStyle ? win.getComputedStyle(cur) : null;
+    if (curStyle) {
+      if (curStyle.display === 'none' || curStyle.visibility === 'hidden' || curStyle.opacity === '0') {
+        return false;
+      }
+    }
+    cur = cur.parentElement;
   }
 
   const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
   if (rect) {
-    // If rect has zero area, check if child has layout, otherwise filter out
-    if (rect.width === 0 && rect.height === 0) {
-      // In happy-dom / test environments without layout engine, fallback to style visibility
-      if (typeof process !== 'undefined' && process.env.NODE_ENV === 'test') {
-        return true;
-      }
-      return false;
-    }
-
     const vw = win.innerWidth || 1920;
     const vh = win.innerHeight || 1080;
 
-    // Viewport bounds check with 50px buffer
-    if (rect.bottom < -50 || rect.top > vh + 50 || rect.right < -50 || rect.left > vw + 50) {
-      return false;
+    // In environments with non-zero dimensions, verify viewport bounding
+    if (rect.width > 0 || rect.height > 0) {
+      if (rect.bottom < -50 || rect.top > vh + 50 || rect.right < -50 || rect.left > vw + 50) {
+        return false;
+      }
     }
   }
 
@@ -148,7 +152,7 @@ export function isCandidateNode(el: HTMLElement): boolean {
   return false;
 }
 
-function truncateText(str: string, maxLen = 50): string {
+function truncateText(str: string, maxLen = 40): string {
   const cleaned = str.replace(/\s+/g, ' ').trim();
   if (cleaned.length <= maxLen) return cleaned;
   return cleaned.substring(0, maxLen - 3) + '...';
@@ -166,10 +170,10 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
   if (type) attrs.push(`type="${type}"`);
 
   const placeholder = el.getAttribute('placeholder');
-  if (placeholder) attrs.push(`placeholder="${truncateText(placeholder, 30)}"`);
+  if (placeholder) attrs.push(`placeholder="${truncateText(placeholder, 35)}"`);
 
   const ariaLabel = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby');
-  if (ariaLabel) attrs.push(`label="${truncateText(ariaLabel, 30)}"`);
+  if (ariaLabel) attrs.push(`label="${truncateText(ariaLabel, 25)}"`);
 
   const role = el.getAttribute('role');
   if (role && role !== tag) attrs.push(`role="${role}"`);
@@ -184,7 +188,7 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
   // Value formatting for inputs/selects
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
     if (el.value) {
-      attrs.push(`value="${truncateText(el.value, 30)}"`);
+      attrs.push(`value="${truncateText(el.value, 25)}"`);
     }
     if (el instanceof HTMLInputElement && el.checked) {
       attrs.push('checked');
@@ -196,13 +200,17 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
   // Get direct text content
   let text = '';
   if (tag !== 'input') {
-    text = truncateText(el.textContent || '', 40);
+    text = truncateText(el.textContent || '', 30);
   }
 
   if (text) {
     return `[${id}] <${tag}${attrStr}>${text}</${tag}>`;
   }
   return `[${id}] <${tag}${attrStr} />`;
+}
+
+export interface DistillOptions {
+  maxItems?: number;
 }
 
 export interface DistillResult {
@@ -218,13 +226,15 @@ export interface DistillResult {
 export function distillViewport(
   root: Document | HTMLElement = document,
   registry: ElementRegistry = globalElementRegistry,
-  win: Window = window
+  win: Window = window,
+  options?: DistillOptions
 ): DistillResult {
+  const maxItems = options?.maxItems ?? 40;
   const lines: string[] = [];
   let totalWalked = 0;
   let interactiveCount = 0;
 
-  const walker = (root instanceof Document ? root.body : root);
+  const walker = root instanceof Document ? root.body : root;
   if (!walker) {
     return { text: '(Empty document)', totalElements: 0, interactiveCount: 0 };
   }
@@ -239,10 +249,14 @@ export function distillViewport(
     if (!isElementVisible(el, win)) continue;
 
     // Check if element has an interactive ancestor already capturing it
-    // (e.g. icon inside button)
     const isInsideButton = el.tagName !== 'BUTTON' && el.closest('button') !== null;
     if (isInsideButton && !['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) {
       continue;
+    }
+
+    if (interactiveCount >= maxItems) {
+      lines.push(`... [${totalWalked - interactiveCount} additional items outside viewport budget]`);
+      break;
     }
 
     const id = registry.register(el);
