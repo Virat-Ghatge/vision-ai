@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M3.1`
+- **Task ID:** `M3.2`
 - **Status:** `[-]` In Progress
-- **Started At:** 2026-10-15T14:41:20+05:30
-- **Goal:** Implement `cdp/actuator.ts` (`chrome.debugger` mouse/keyboard dispatch) + synthetic fallback.
+- **Started At:** 2026-10-15T14:42:30+05:30
+- **Goal:** Implement speculative macro-batch executor with mid-batch validation/URL-change circuit breakers.
 
 ---
 
@@ -25,8 +25,8 @@
 - [x] `M2.3` Write Vitest benchmark feeding a complex 1,000-node mock e-commerce/GitHub DOM and asserting output is under 800 tokens and diffs are under 100 tokens.
 
 ### Milestone 3: CDP Hardware Actuator, Macro-Batch Runner & SoM Vision
-- [-] `M3.1` Implement `cdp/actuator.ts` (`chrome.debugger` mouse/keyboard dispatch) + synthetic fallback.
-- [ ] `M3.2` Implement speculative macro-batch executor with mid-batch validation/URL-change circuit breakers.
+- [x] `M3.1` Implement `cdp/actuator.ts` (`chrome.debugger` mouse/keyboard dispatch) + synthetic fallback.
+- [-] `M3.2` Implement speculative macro-batch executor with mid-batch validation/URL-change circuit breakers.
 - [ ] `M3.3` Implement `som.ts` canvas bounding-box renderer and cropped WebP extractor.
 
 ### Milestone 4: Stateful Background Agent Loop & IndexedDB Skill Compiler
@@ -51,6 +51,7 @@
 | 6 | M2.1 | PASS (0 errors) | PASS (10 tests) | PASS (259.01 kB bundle) | N/A (Distiller Core) | Built distiller.ts with WeakRef registry, visibility filter, and integer tagging |
 | 7 | M2.2 | PASS (0 errors) | PASS (10 tests) | PASS (259.01 kB bundle) | N/A (Delta Core) | Built delta.ts with MutationObserver and alert/error detection |
 | 8 | M2.3 | PASS (0 errors) | PASS (13 tests) | PASS (259.01 kB bundle) | N/A (Benchmark) | 1,000+ node DOM benchmark passed (<800 tokens viewport, <100 tokens delta) |
+| 9 | M3.1 | PASS (0 errors) | PASS (13 tests) | PASS (259.01 kB bundle) | N/A (CDP Actuator) | CDPActuator with trusted chrome.debugger mouse/key dispatch and fallback |
 
 ---
 
