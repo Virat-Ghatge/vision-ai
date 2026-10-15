@@ -111,11 +111,19 @@ export class LLMRouter {
     // Tier 2: Claude Sonnet or Gemini Pro or OpenRouter
     const pref2 = this.config.preferredTier2Provider ?? 'anthropic';
 
-    if (pref2 === 'anthropic' && keys.anthropic) {
+    if (pref2 === 'gemini' && keys.gemini) {
       return {
-        provider: new AnthropicAdapter(keys.anthropic, this.config.tier2Model ?? 'claude-3-7-sonnet-20250219'),
+        provider: new GeminiAdapter(keys.gemini, this.config.tier2Model ?? 'gemini-2.5-pro'),
         activeTier: 2,
-        model: this.config.tier2Model ?? 'claude-3-7-sonnet-20250219',
+        model: this.config.tier2Model ?? 'gemini-2.5-pro',
+      };
+    }
+
+    if (pref2 === 'openrouter' && keys.openrouter) {
+      return {
+        provider: new OpenRouterAdapter(keys.openrouter, this.config.tier2Model ?? 'anthropic/claude-3.5-sonnet'),
+        activeTier: 2,
+        model: this.config.tier2Model,
       };
     }
 
