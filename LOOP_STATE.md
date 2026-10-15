@@ -60,6 +60,7 @@
 | 15 | M5.1 | PASS (0 errors) | PASS (27 tests) | PASS (340.95 kB bundle) | N/A (Sidepanel UI) | Complete React Sidepanel UI with HUD, Key Vault, Skills Drawer, TaskStream |
 | 16 | M5.2 | PASS (0 errors) | PASS (27 tests) | PASS (340.95 kB bundle) | PASS (Live Browser) | Live Chrome Browser subagent verified Sidepanel UI, modal controls, and artifacts |
 | 17 | M5.3 | PASS (0 errors) | PASS (30 tests) | PASS (357.37 kB bundle) | PASS (UI & Routing) | Added per-provider model selectors (Dassi AI style) and seamless rate-limit failover |
+| 18 | M5.4 | PASS (0 errors) | PASS (33 tests) | PASS (369.49 kB bundle) | PASS (Groq & Gemini) | Implemented live model discovery, search, refresh, and auto-failover for Groq and Gemini |
 
 ---
 
