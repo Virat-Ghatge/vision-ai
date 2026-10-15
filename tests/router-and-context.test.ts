@@ -231,4 +231,153 @@ describe('M1.3: Multi-Provider Router & Byte-Stable Context Manager Suite', () =
       }).toThrow(/Prefix stability invariant violated/);
     });
   });
+
+  describe('Model Selection & Automatic Failover on Usage Limits', () => {
+    it('respects specific model preferences for providers', () => {
+      const router = new LLMRouter({
+        apiKeys: {
+          openrouter: 'sk-or-test-key',
+          groq: 'gsk-test-key',
+          gemini: 'aiza-test-key',
+        },
+        preferredTier1Provider: 'openrouter',
+        openRouterModel: 'deepseek/deepseek-chat:free',
+        groqModel: 'llama-3.1-8b-instant',
+        geminiModel: 'gemini-2.0-flash',
+      });
+
+      const tier1 = router.getProviderForTier(1);
+      expect(tier1.provider.providerType).toBe('openrouter');
+      expect(tier1.model).toBe('deepseek/deepseek-chat:free');
+
+      router.updateConfig({ preferredTier1Provider: 'groq' });
+      const tier1Groq = router.getProviderForTier(1);
+      expect(tier1Groq.provider.providerType).toBe('groq');
+      expect(tier1Groq.model).toBe('llama-3.1-8b-instant');
+    });
+
+    it('automatically switches OpenRouter model on HTTP 429 rate limit without interrupting task', async () => {
+      let callCount = 0;
+      const requestedModels: string[] = [];
+
+      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+        callCount++;
+        const body = JSON.parse(init.body as string);
+        requestedModels.push(body.model);
+
+        if (callCount === 1) {
+          // First attempt hits 429 Rate Limit
+          return {
+            ok: false,
+            status: 429,
+            text: async () => 'Rate limit exceeded: Please wait or try another model.',
+          };
+        }
+
+        // Second attempt with fallback model succeeds
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    thought: 'Auto-switched model executed successfully',
+                    actions: [{ type: 'click', id: 5 }],
+                    complete: true,
+                  }),
+                },
+              },
+            ],
+          }),
+        };
+      });
+
+      const router = new LLMRouter({
+        apiKeys: {
+          openrouter: 'sk-or-key-123',
+        },
+        preferredTier1Provider: 'openrouter',
+        openRouterModel: 'meta-llama/llama-3.3-70b-instruct:free',
+        openRouterFallbackModels: [
+          'meta-llama/llama-3.3-70b-instruct:free',
+          'google/gemini-2.0-flash-exp:free',
+        ],
+        autoFallbackOnLimit: true,
+      });
+
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'Navigate to research portal' },
+      ];
+
+      const result = await router.executeStep(messages, 1);
+
+      expect(callCount).toBe(2);
+      expect(requestedModels[0]).toBe('meta-llama/llama-3.3-70b-instruct:free');
+      expect(requestedModels[1]).toBe('google/gemini-2.0-flash-exp:free');
+      expect(result.response.thought).toBe('Auto-switched model executed successfully');
+      expect(result.response.complete).toBe(true);
+      expect(result.modelUsed).toBe('google/gemini-2.0-flash-exp:free');
+      expect(result.fallbackNotice).toContain('google/gemini-2.0-flash-exp:free');
+      // Subsequent step should use the working fallback model
+      expect(router.getConfig().openRouterModel).toBe('google/gemini-2.0-flash-exp:free');
+    });
+
+    it('cross-provider failover: automatically falls over from Groq to OpenRouter when 429 occurs', async () => {
+      let groqCalled = false;
+      let openRouterCalled = false;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string, _init: RequestInit) => {
+        if (url.includes('api.groq.com')) {
+          groqCalled = true;
+          return {
+            ok: false,
+            status: 429,
+            text: async () => 'Rate limit exceeded: TPM limit reached',
+          };
+        }
+
+        if (url.includes('openrouter.ai')) {
+          openRouterCalled = true;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      thought: 'OpenRouter fallback executed',
+                      actions: [{ type: 'wait' }],
+                      complete: false,
+                    }),
+                  },
+                },
+              ],
+            }),
+          };
+        }
+
+        return { ok: false, status: 500, text: async () => 'Unexpected URL' };
+      });
+
+      const router = new LLMRouter({
+        apiKeys: {
+          groq: 'gsk-key',
+          openrouter: 'sk-or-key',
+        },
+        preferredTier1Provider: 'groq',
+        autoFallbackOnLimit: true,
+      });
+
+      const result = await router.executeStep([{ role: 'user', content: 'Test prompt' }], 1);
+
+      expect(groqCalled).toBe(true);
+      expect(openRouterCalled).toBe(true);
+      expect(result.provider).toBe('openrouter');
+      expect(result.response.thought).toBe('OpenRouter fallback executed');
+      expect(result.fallbackNotice).toContain('openrouter');
+    });
+  });
 });

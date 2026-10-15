@@ -5,6 +5,7 @@ import {
   LLMRequestOptions,
   AgentPlanResponse,
   TokenUsage,
+  UsageLimitError,
 } from '../types';
 import { parseAgentPlanResponse } from '../parser';
 
@@ -105,12 +106,28 @@ export class AnthropicAdapter implements LLMProvider {
 
     if (!response.ok) {
       const errText = await response.text();
+      const isLimit =
+        response.status === 429 ||
+        response.status === 529 ||
+        /rate limit|quota|credit|overloaded/i.test(errText);
+      if (isLimit) {
+        throw new UsageLimitError(
+          `Anthropic rate limit or quota exceeded (${response.status}): ${errText}`,
+          'anthropic',
+          model,
+          response.status
+        );
+      }
       throw new Error(`Anthropic API error (${response.status}): ${errText}`);
     }
 
     const data = (await response.json()) as AnthropicResponse;
     if (data.error) {
-      throw new Error(`Anthropic error: ${data.error.message ?? 'Unknown'}`);
+      const msg = data.error.message ?? 'Unknown';
+      if (/rate limit|quota|credit|overloaded/i.test(msg)) {
+        throw new UsageLimitError(`Anthropic error: ${msg}`, 'anthropic', model);
+      }
+      throw new Error(`Anthropic error: ${msg}`);
     }
 
     const text = data.content?.[0]?.text ?? '';

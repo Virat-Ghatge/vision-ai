@@ -33,6 +33,8 @@ export interface AgentSessionState {
   completedTraces: ActionTrace[];
   activeProvider?: LLMProviderType;
   activeTier?: RouterTier;
+  activeModel?: string;
+  fallbackNotice?: string;
   error?: string;
 }
 

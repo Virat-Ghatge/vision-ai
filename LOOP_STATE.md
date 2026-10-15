@@ -59,6 +59,7 @@
 | 14 | M4.3 | PASS (0 errors) | PASS (27 tests) | PASS (293.06 kB bundle) | N/A (Safety Engine) | Safety Interceptor classifying destructive actions & Human-in-the-Loop approval |
 | 15 | M5.1 | PASS (0 errors) | PASS (27 tests) | PASS (340.95 kB bundle) | N/A (Sidepanel UI) | Complete React Sidepanel UI with HUD, Key Vault, Skills Drawer, TaskStream |
 | 16 | M5.2 | PASS (0 errors) | PASS (27 tests) | PASS (340.95 kB bundle) | PASS (Live Browser) | Live Chrome Browser subagent verified Sidepanel UI, modal controls, and artifacts |
+| 17 | M5.3 | PASS (0 errors) | PASS (30 tests) | PASS (357.37 kB bundle) | PASS (UI & Routing) | Added per-provider model selectors (Dassi AI style) and seamless rate-limit failover |
 
 ---
 

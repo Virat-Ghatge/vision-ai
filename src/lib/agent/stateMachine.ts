@@ -146,10 +146,20 @@ export class AgentStateMachine {
 
       // 3. ROUTE LLM: Query multi-provider tiered router
       const messages = this.contextManager.getMessages();
-      const { response: plan, activeTier, provider } = await this.router.executeStep(messages, 1);
+      const {
+        response: plan,
+        activeTier,
+        provider,
+        modelUsed,
+        fallbackNotice,
+      } = await this.router.executeStep(messages, 1);
 
       this.state.activeProvider = provider;
       this.state.activeTier = activeTier;
+      this.state.activeModel = modelUsed;
+      if (fallbackNotice) {
+        this.state.fallbackNotice = fallbackNotice;
+      }
       this.state.currentThought = plan.thought;
       this.state.pendingActions = plan.actions;
 

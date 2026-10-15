@@ -4,6 +4,7 @@ import {
   ChatMessage,
   LLMRequestOptions,
   AgentPlanResponse,
+  UsageLimitError,
 } from '../types';
 import { parseAgentPlanResponse } from '../parser';
 
@@ -79,12 +80,28 @@ export class GroqAdapter implements LLMProvider {
 
     if (!response.ok) {
       const errText = await response.text();
+      const isLimit =
+        response.status === 429 ||
+        response.status === 402 ||
+        /rate limit|rate_limit|quota|token limit|tpm|rpm/i.test(errText);
+      if (isLimit) {
+        throw new UsageLimitError(
+          `Groq rate limit or quota exceeded (${response.status}): ${errText}`,
+          'groq',
+          model,
+          response.status
+        );
+      }
       throw new Error(`Groq API error (${response.status}): ${errText}`);
     }
 
     const data = (await response.json()) as OpenAIChatResponse;
     if (data.error) {
-      throw new Error(`Groq error: ${data.error.message ?? 'Unknown'}`);
+      const msg = data.error.message ?? 'Unknown';
+      if (/rate limit|rate_limit|quota|token limit|tpm|rpm/i.test(msg)) {
+        throw new UsageLimitError(`Groq error: ${msg}`, 'groq', model);
+      }
+      throw new Error(`Groq error: ${msg}`);
     }
 
     const text = data.choices?.[0]?.message?.content ?? '';

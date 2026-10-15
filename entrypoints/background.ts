@@ -61,6 +61,18 @@ export default defineBackground(() => {
     }
   });
 
+  // Keep live router in sync with any changes in ApiKeyVault / model preferences
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local') {
+      if (changes.apiKeys) {
+        router.updateConfig({ apiKeys: changes.apiKeys.newValue });
+      }
+      if (changes.modelRoutingConfig) {
+        router.updateConfig(changes.modelRoutingConfig.newValue);
+      }
+    }
+  });
+
   const stateMachine = new AgentStateMachine(router, {
     onStateChange: (state) => {
       // Broadcast state updates to open sidepanel UI

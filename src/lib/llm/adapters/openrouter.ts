@@ -4,6 +4,7 @@ import {
   ChatMessage,
   LLMRequestOptions,
   AgentPlanResponse,
+  UsageLimitError,
 } from '../types';
 import { parseAgentPlanResponse } from '../parser';
 
@@ -81,12 +82,28 @@ export class OpenRouterAdapter implements LLMProvider {
 
     if (!response.ok) {
       const errText = await response.text();
+      const isLimit =
+        response.status === 429 ||
+        response.status === 402 ||
+        /rate limit|quota|credit|insufficient|exceeded/i.test(errText);
+      if (isLimit) {
+        throw new UsageLimitError(
+          `OpenRouter usage limit or rate limit exceeded (${response.status}): ${errText}`,
+          'openrouter',
+          model,
+          response.status
+        );
+      }
       throw new Error(`OpenRouter API error (${response.status}): ${errText}`);
     }
 
     const data = (await response.json()) as OpenRouterResponse;
     if (data.error) {
-      throw new Error(`OpenRouter error: ${data.error.message ?? 'Unknown'}`);
+      const msg = data.error.message ?? 'Unknown';
+      if (/rate limit|quota|credit|insufficient|exceeded/i.test(msg)) {
+        throw new UsageLimitError(`OpenRouter error: ${msg}`, 'openrouter', model);
+      }
+      throw new Error(`OpenRouter error: ${msg}`);
     }
 
     const text = data.choices?.[0]?.message?.content ?? '';

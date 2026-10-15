@@ -155,6 +155,7 @@ export default function App(): React.JSX.Element {
           metrics={state.tokenMetrics}
           activeTier={state.activeTier}
           activeProvider={state.activeProvider}
+          activeModel={state.activeModel}
         />
       </div>
 

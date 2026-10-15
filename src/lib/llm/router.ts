@@ -6,12 +6,29 @@ import {
   ChatMessage,
   LLMRequestOptions,
   AgentPlanResponse,
+  UsageLimitError,
 } from './types';
 import { AnthropicAdapter } from './adapters/anthropic';
 import { GeminiAdapter } from './adapters/gemini';
 import { GroqAdapter } from './adapters/groq';
 import { OpenRouterAdapter } from './adapters/openrouter';
 import { OllamaAdapter } from './adapters/ollama';
+
+export const DEFAULT_OPENROUTER_FALLBACKS = [
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'google/gemini-2.0-flash-exp:free',
+  'deepseek/deepseek-chat:free',
+  'qwen/qwen-2.5-72b-instruct:free',
+  'meta-llama/llama-3.1-8b-instruct:free',
+];
+
+export interface StepExecutionResult {
+  response: AgentPlanResponse;
+  activeTier: RouterTier;
+  provider: LLMProviderType;
+  modelUsed?: string;
+  fallbackNotice?: string;
+}
 
 export class LLMRouter {
   private config: RouterConfig;
@@ -73,34 +90,56 @@ export class LLMRouter {
       const pref = this.config.preferredTier1Provider ?? 'groq';
 
       if (pref === 'groq' && keys.groq) {
+        const model = this.config.groqModel ?? this.config.tier1Model ?? 'llama-3.3-70b-versatile';
         return {
-          provider: new GroqAdapter(keys.groq, this.config.tier1Model ?? 'llama-3.3-70b-versatile'),
+          provider: new GroqAdapter(keys.groq, model),
           activeTier: 1,
-          model: this.config.tier1Model ?? 'llama-3.3-70b-versatile',
+          model,
         };
       }
 
-      if (keys.gemini) {
+      if (pref === 'openrouter' && keys.openrouter) {
+        const model = this.config.openRouterModel ?? this.config.tier1Model ?? 'meta-llama/llama-3.3-70b-instruct:free';
         return {
-          provider: new GeminiAdapter(keys.gemini, this.config.tier1Model ?? 'gemini-2.5-flash'),
+          provider: new OpenRouterAdapter(keys.openrouter, model),
           activeTier: 1,
-          model: this.config.tier1Model ?? 'gemini-2.5-flash',
+          model,
+        };
+      }
+
+      if (pref === 'gemini' && keys.gemini) {
+        const model = this.config.geminiModel ?? this.config.tier1Model ?? 'gemini-2.0-flash';
+        return {
+          provider: new GeminiAdapter(keys.gemini, model),
+          activeTier: 1,
+          model,
         };
       }
 
       if (keys.groq) {
+        const model = this.config.groqModel ?? this.config.tier1Model ?? 'llama-3.3-70b-versatile';
         return {
-          provider: new GroqAdapter(keys.groq, this.config.tier1Model ?? 'llama-3.3-70b-versatile'),
+          provider: new GroqAdapter(keys.groq, model),
           activeTier: 1,
-          model: this.config.tier1Model ?? 'llama-3.3-70b-versatile',
+          model,
         };
       }
 
       if (keys.openrouter) {
+        const model = this.config.openRouterModel ?? this.config.tier1Model ?? 'meta-llama/llama-3.3-70b-instruct:free';
         return {
-          provider: new OpenRouterAdapter(keys.openrouter, this.config.tier1Model ?? 'groq/llama-3.3-70b-versatile'),
+          provider: new OpenRouterAdapter(keys.openrouter, model),
           activeTier: 1,
-          model: this.config.tier1Model,
+          model,
+        };
+      }
+
+      if (keys.gemini) {
+        const model = this.config.geminiModel ?? this.config.tier1Model ?? 'gemini-2.0-flash';
+        return {
+          provider: new GeminiAdapter(keys.gemini, model),
+          activeTier: 1,
+          model,
         };
       }
 
@@ -112,42 +151,47 @@ export class LLMRouter {
     const pref2 = this.config.preferredTier2Provider ?? 'anthropic';
 
     if (pref2 === 'gemini' && keys.gemini) {
+      const model = this.config.geminiModel ?? this.config.tier2Model ?? 'gemini-2.5-pro';
       return {
-        provider: new GeminiAdapter(keys.gemini, this.config.tier2Model ?? 'gemini-2.5-pro'),
+        provider: new GeminiAdapter(keys.gemini, model),
         activeTier: 2,
-        model: this.config.tier2Model ?? 'gemini-2.5-pro',
+        model,
       };
     }
 
     if (pref2 === 'openrouter' && keys.openrouter) {
+      const model = this.config.openRouterModel ?? this.config.tier2Model ?? 'anthropic/claude-3.5-sonnet';
       return {
-        provider: new OpenRouterAdapter(keys.openrouter, this.config.tier2Model ?? 'anthropic/claude-3.5-sonnet'),
+        provider: new OpenRouterAdapter(keys.openrouter, model),
         activeTier: 2,
-        model: this.config.tier2Model,
+        model,
       };
     }
 
     if (keys.anthropic) {
+      const model = this.config.anthropicModel ?? this.config.tier2Model ?? 'claude-3-7-sonnet-20250219';
       return {
-        provider: new AnthropicAdapter(keys.anthropic, this.config.tier2Model ?? 'claude-3-7-sonnet-20250219'),
+        provider: new AnthropicAdapter(keys.anthropic, model),
         activeTier: 2,
-        model: this.config.tier2Model ?? 'claude-3-7-sonnet-20250219',
+        model,
       };
     }
 
     if (keys.gemini) {
+      const model = this.config.geminiModel ?? this.config.tier2Model ?? 'gemini-2.5-pro';
       return {
-        provider: new GeminiAdapter(keys.gemini, this.config.tier2Model ?? 'gemini-2.5-pro'),
+        provider: new GeminiAdapter(keys.gemini, model),
         activeTier: 2,
-        model: this.config.tier2Model ?? 'gemini-2.5-pro',
+        model,
       };
     }
 
     if (keys.openrouter) {
+      const model = this.config.openRouterModel ?? this.config.tier2Model ?? 'anthropic/claude-3.5-sonnet';
       return {
-        provider: new OpenRouterAdapter(keys.openrouter, this.config.tier2Model ?? 'anthropic/claude-3.5-sonnet'),
+        provider: new OpenRouterAdapter(keys.openrouter, model),
         activeTier: 2,
-        model: this.config.tier2Model,
+        model,
       };
     }
 
@@ -163,17 +207,133 @@ export class LLMRouter {
     messages: ChatMessage[],
     requestedTier: RouterTier = 1,
     options?: LLMRequestOptions
-  ): Promise<{ response: AgentPlanResponse; activeTier: RouterTier; provider: LLMProviderType }> {
-    const { provider, activeTier, model } = this.getProviderForTier(requestedTier);
-    const plan = await provider.chat(messages, {
-      ...options,
-      model: options?.model ?? model,
-    });
-    return {
-      response: plan,
-      activeTier,
-      provider: provider.providerType,
-    };
+  ): Promise<StepExecutionResult> {
+    const { provider, activeTier, model: initialModel } = this.getProviderForTier(requestedTier);
+    const activeModel = options?.model ?? initialModel;
+
+    try {
+      const plan = await provider.chat(messages, {
+        ...options,
+        model: activeModel,
+      });
+      return {
+        response: plan,
+        activeTier,
+        provider: provider.providerType,
+        modelUsed: activeModel,
+      };
+    } catch (err: unknown) {
+      const isLimit =
+        err instanceof UsageLimitError ||
+        (err instanceof Error &&
+          /rate limit|rate_limit|quota|credit|insufficient|429|402|resource_exhausted/i.test(err.message));
+
+      if (!isLimit || this.config.autoFallbackOnLimit === false) {
+        throw err;
+      }
+
+      console.warn(
+        `[Vision AI Router] Usage limit reached on ${provider.providerType} (${activeModel}). Attempting automatic seamless model switch...`
+      );
+
+      // Strategy 1: If OpenRouter, try next model in fallback list
+      if (provider.providerType === 'openrouter') {
+        const fallbacks =
+          this.config.openRouterFallbackModels && this.config.openRouterFallbackModels.length > 0
+            ? this.config.openRouterFallbackModels
+            : DEFAULT_OPENROUTER_FALLBACKS;
+
+        for (const candidateModel of fallbacks) {
+          if (candidateModel === activeModel) continue;
+          try {
+            console.log(`[Vision AI Router] Auto-switching to OpenRouter fallback model: ${candidateModel}`);
+            const plan = await provider.chat(messages, {
+              ...options,
+              model: candidateModel,
+            });
+            // Update active model so subsequent turns use the working model without interrupting
+            this.config.openRouterModel = candidateModel;
+            return {
+              response: plan,
+              activeTier,
+              provider: 'openrouter',
+              modelUsed: candidateModel,
+              fallbackNotice: `Switched to ${candidateModel} (Rate limit avoided on ${activeModel})`,
+            };
+          } catch (nextErr) {
+            console.warn(`[Vision AI Router] Fallback candidate ${candidateModel} also failed:`, nextErr);
+          }
+        }
+      }
+
+      // Strategy 2: Cross-provider failover
+      const alternates: Array<{
+        type: LLMProviderType;
+        create: () => { provider: LLMProvider; model: string };
+      }> = [];
+
+      if (provider.providerType !== 'openrouter' && this.config.apiKeys.openrouter) {
+        alternates.push({
+          type: 'openrouter',
+          create: () => {
+            const m = this.config.openRouterModel ?? DEFAULT_OPENROUTER_FALLBACKS[0];
+            return {
+              provider: new OpenRouterAdapter(this.config.apiKeys.openrouter!, m),
+              model: m,
+            };
+          },
+        });
+      }
+
+      if (provider.providerType !== 'gemini' && this.config.apiKeys.gemini) {
+        alternates.push({
+          type: 'gemini',
+          create: () => {
+            const m = this.config.geminiModel ?? 'gemini-2.0-flash';
+            return {
+              provider: new GeminiAdapter(this.config.apiKeys.gemini!, m),
+              model: m,
+            };
+          },
+        });
+      }
+
+      if (provider.providerType !== 'groq' && this.config.apiKeys.groq) {
+        alternates.push({
+          type: 'groq',
+          create: () => {
+            const m = this.config.groqModel ?? 'llama-3.3-70b-versatile';
+            return {
+              provider: new GroqAdapter(this.config.apiKeys.groq!, m),
+              model: m,
+            };
+          },
+        });
+      }
+
+      for (const alt of alternates) {
+        try {
+          const { provider: altProvider, model: altModel } = alt.create();
+          console.log(`[Vision AI Router] Cross-provider failover to ${alt.type} (${altModel})`);
+          const plan = await altProvider.chat(messages, {
+            ...options,
+            model: altModel,
+          });
+          return {
+            response: plan,
+            activeTier,
+            provider: alt.type,
+            modelUsed: altModel,
+            fallbackNotice: `Switched provider to ${alt.type} (${altModel}) due to usage limit`,
+          };
+        } catch (altErr) {
+          console.warn(`[Vision AI Router] Alternate provider ${alt.type} failed:`, altErr);
+        }
+      }
+
+      // Re-throw if all automated fallbacks fail
+      throw err;
+    }
   }
 
   async summarizePage(rawText: string): Promise<string> {

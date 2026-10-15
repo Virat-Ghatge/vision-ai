@@ -77,6 +77,26 @@ export interface RouterConfig {
   tier2Model?: string; // e.g. "claude-3-7-sonnet-20250219" or "gemini-2.5-pro"
   preferredTier1Provider?: 'groq' | 'gemini' | 'openrouter';
   preferredTier2Provider?: 'anthropic' | 'gemini' | 'openrouter';
+  openRouterModel?: string;
+  openRouterFallbackModels?: string[];
+  groqModel?: string;
+  geminiModel?: string;
+  anthropicModel?: string;
+  autoFallbackOnLimit?: boolean;
+}
+
+export class UsageLimitError extends Error {
+  readonly provider: LLMProviderType;
+  readonly model?: string;
+  readonly statusCode?: number;
+
+  constructor(message: string, provider: LLMProviderType, model?: string, statusCode?: number) {
+    super(message);
+    this.name = 'UsageLimitError';
+    this.provider = provider;
+    this.model = model;
+    this.statusCode = statusCode;
+  }
 }
 
 export interface LLMProvider {

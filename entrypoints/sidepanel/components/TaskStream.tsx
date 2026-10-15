@@ -142,6 +142,14 @@ export function TaskStream({
           </span>
         </div>
 
+        {/* Auto-Switch Fallback Notice */}
+        {state.fallbackNotice && (
+          <div className="bg-amber-950/60 border border-amber-700/80 rounded-lg p-2.5 text-xs text-amber-200 flex items-center gap-2 animate-pulse">
+            <span className="text-amber-400 font-bold">⚡ Model Failover:</span>
+            <span>{state.fallbackNotice}</span>
+          </div>
+        )}
+
         {/* Thought Bubble */}
         {state.currentThought && (
           <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300 italic flex items-start gap-2">

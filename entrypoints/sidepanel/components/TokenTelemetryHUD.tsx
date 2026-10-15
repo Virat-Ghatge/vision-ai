@@ -6,10 +6,17 @@ interface Props {
   metrics: TokenMetrics;
   activeTier?: number;
   activeProvider?: string;
+  activeModel?: string;
 }
 
-export function TokenTelemetryHUD({ metrics, activeTier = 1, activeProvider = 'groq' }: Props): React.JSX.Element {
+export function TokenTelemetryHUD({
+  metrics,
+  activeTier = 1,
+  activeProvider = 'openrouter',
+  activeModel,
+}: Props): React.JSX.Element {
   const discount = metrics.estimatedCostDiscountPercent || 0;
+  const shortModel = activeModel ? activeModel.split('/').pop()?.replace(':free', ' (free)') : undefined;
 
   return (
     <div className="bg-gradient-to-r from-orbit-panel via-slate-900 to-orbit-panel rounded-xl border border-orbit-border p-3.5 shadow-lg">
@@ -19,8 +26,8 @@ export function TokenTelemetryHUD({ metrics, activeTier = 1, activeProvider = 'g
           <span>Token Telemetry HUD</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] bg-slate-800 text-orbit-accent border border-slate-700 px-2 py-0.5 rounded font-mono">
-            Tier {activeTier}: {activeProvider.toUpperCase()}
+          <span className="text-[10px] bg-slate-800 text-orbit-accent border border-slate-700 px-2 py-0.5 rounded font-mono truncate max-w-[150px]">
+            {activeProvider.toUpperCase()}{shortModel ? ` • ${shortModel}` : ` (T${activeTier})`}
           </span>
           <span className="flex items-center gap-1 text-[11px] font-bold text-orbit-neon bg-orbit-neon/10 border border-orbit-neon/30 px-2 py-0.5 rounded-full">
             <ShieldCheck className="w-3 h-3" />

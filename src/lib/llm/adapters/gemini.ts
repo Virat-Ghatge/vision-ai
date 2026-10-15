@@ -4,6 +4,7 @@ import {
   ChatMessage,
   LLMRequestOptions,
   AgentPlanResponse,
+  UsageLimitError,
 } from '../types';
 import { parseAgentPlanResponse } from '../parser';
 
@@ -112,12 +113,27 @@ export class GeminiAdapter implements LLMProvider {
 
     if (!response.ok) {
       const errText = await response.text();
+      const isLimit =
+        response.status === 429 ||
+        /resource_exhausted|quota|rate limit|rate_limit/i.test(errText);
+      if (isLimit) {
+        throw new UsageLimitError(
+          `Gemini rate limit or quota exceeded (${response.status}): ${errText}`,
+          'gemini',
+          model,
+          response.status
+        );
+      }
       throw new Error(`Gemini API error (${response.status}): ${errText}`);
     }
 
     const data = (await response.json()) as GeminiResponse;
     if (data.error) {
-      throw new Error(`Gemini error: ${data.error.message ?? 'Unknown'}`);
+      const msg = data.error.message ?? 'Unknown';
+      if (/resource_exhausted|quota|rate limit|rate_limit/i.test(msg)) {
+        throw new UsageLimitError(`Gemini error: ${msg}`, 'gemini', model);
+      }
+      throw new Error(`Gemini error: ${msg}`);
     }
 
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
