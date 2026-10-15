@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M2.2`
+- **Task ID:** `M2.3`
 - **Status:** `[-]` In Progress
-- **Started At:** 2026-10-15T14:35:15+05:30
-- **Goal:** Build `delta.ts` using `MutationObserver` to emit compact `ADDED / MODIFIED / REMOVED` diffs.
+- **Started At:** 2026-10-15T14:36:20+05:30
+- **Goal:** Write Vitest benchmark feeding a complex 1,000-node mock e-commerce/GitHub DOM and asserting output is under 800 tokens and diffs are under 100 tokens.
 
 ---
 
@@ -21,8 +21,8 @@
 
 ### Milestone 2: DOM Distiller & Mutation Delta Engine
 - [x] `M2.1` Build `distiller.ts` with numeric `[ID]` tagging, visibility filtering, and `WeakRef` registry.
-- [-] `M2.2` Build `delta.ts` using `MutationObserver` to emit compact `ADDED / MODIFIED / REMOVED` diffs.
-- [ ] `M2.3` Write Vitest benchmark feeding a complex 1,000-node mock e-commerce/GitHub DOM and asserting output is under 800 tokens and diffs are under 100 tokens.
+- [x] `M2.2` Build `delta.ts` using `MutationObserver` to emit compact `ADDED / MODIFIED / REMOVED` diffs.
+- [-] `M2.3` Write Vitest benchmark feeding a complex 1,000-node mock e-commerce/GitHub DOM and asserting output is under 800 tokens and diffs are under 100 tokens.
 
 ### Milestone 3: CDP Hardware Actuator, Macro-Batch Runner & SoM Vision
 - [ ] `M3.1` Implement `cdp/actuator.ts` (`chrome.debugger` mouse/keyboard dispatch) + synthetic fallback.
@@ -49,6 +49,7 @@
 | 4 | M1.2 | PASS (0 errors) | PASS (2 tests) | PASS (258.96 kB bundle) | N/A (Context Core) | Implemented ByteStableContextManager with prefix hash and token estimator |
 | 5 | M1.3 | PASS (0 errors) | PASS (10 tests) | PASS (258.96 kB bundle) | N/A (Test Suite) | Full unit test suite for routing, cache headers, and 5-step prefix immutability |
 | 6 | M2.1 | PASS (0 errors) | PASS (10 tests) | PASS (259.01 kB bundle) | N/A (Distiller Core) | Built distiller.ts with WeakRef registry, visibility filter, and integer tagging |
+| 7 | M2.2 | PASS (0 errors) | PASS (10 tests) | PASS (259.01 kB bundle) | N/A (Delta Core) | Built delta.ts with MutationObserver and alert/error detection |
 
 ---
 
