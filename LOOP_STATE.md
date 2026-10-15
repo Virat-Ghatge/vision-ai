@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M3.2`
+- **Task ID:** `M3.3`
 - **Status:** `[-]` In Progress
-- **Started At:** 2026-10-15T14:42:30+05:30
-- **Goal:** Implement speculative macro-batch executor with mid-batch validation/URL-change circuit breakers.
+- **Started At:** 2026-10-15T14:43:25+05:30
+- **Goal:** Implement `som.ts` canvas bounding-box renderer and cropped WebP extractor.
 
 ---
 
@@ -26,8 +26,8 @@
 
 ### Milestone 3: CDP Hardware Actuator, Macro-Batch Runner & SoM Vision
 - [x] `M3.1` Implement `cdp/actuator.ts` (`chrome.debugger` mouse/keyboard dispatch) + synthetic fallback.
-- [-] `M3.2` Implement speculative macro-batch executor with mid-batch validation/URL-change circuit breakers.
-- [ ] `M3.3` Implement `som.ts` canvas bounding-box renderer and cropped WebP extractor.
+- [x] `M3.2` Implement speculative macro-batch executor with mid-batch validation/URL-change circuit breakers.
+- [-] `M3.3` Implement `som.ts` canvas bounding-box renderer and cropped WebP extractor.
 
 ### Milestone 4: Stateful Background Agent Loop & IndexedDB Skill Compiler
 - [ ] `M4.1` Build the Service Worker state machine (`Observe -> Check Skill Cache -> Route LLM -> Execute Macro-Batch -> Diff`).
@@ -52,6 +52,7 @@
 | 7 | M2.2 | PASS (0 errors) | PASS (10 tests) | PASS (259.01 kB bundle) | N/A (Delta Core) | Built delta.ts with MutationObserver and alert/error detection |
 | 8 | M2.3 | PASS (0 errors) | PASS (13 tests) | PASS (259.01 kB bundle) | N/A (Benchmark) | 1,000+ node DOM benchmark passed (<800 tokens viewport, <100 tokens delta) |
 | 9 | M3.1 | PASS (0 errors) | PASS (13 tests) | PASS (259.01 kB bundle) | N/A (CDP Actuator) | CDPActuator with trusted chrome.debugger mouse/key dispatch and fallback |
+| 10 | M3.2 | PASS (0 errors) | PASS (13 tests) | PASS (259.01 kB bundle) | N/A (Macro Runner) | MacroBatchExecutor with 120ms debounce and validation/abort circuit breakers |
 
 ---
 
