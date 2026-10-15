@@ -324,6 +324,72 @@ describe('M1.3: Multi-Provider Router & Byte-Stable Context Manager Suite', () =
       expect(router.getConfig().openRouterModel).toBe('google/gemini-2.0-flash-exp:free');
     });
 
+    it('automatically catches HTTP 404 model unavailable for free error and fails over to openrouter/free', async () => {
+      let callCount = 0;
+      const requestedModels: string[] = [];
+
+      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+        callCount++;
+        const body = JSON.parse(init.body as string);
+        requestedModels.push(body.model);
+
+        if (callCount === 1) {
+          // Exact error string reported by user
+          return {
+            ok: false,
+            status: 404,
+            text: async () =>
+              JSON.stringify({
+                error: {
+                  message:
+                    'This model is unavailable for free. The paid version is available now - use this slug instead: meta-llama/llama-3.3-70b-instruct',
+                  code: 404,
+                },
+              }),
+          };
+        }
+
+        // Second call with openrouter/free succeeds
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    thought: 'openrouter/free selected working model and completed task',
+                    actions: [{ type: 'click', id: 2 }],
+                    complete: true,
+                  }),
+                },
+              },
+            ],
+          }),
+        };
+      });
+
+      const router = new LLMRouter({
+        apiKeys: {
+          openrouter: 'sk-or-key-test',
+        },
+        preferredTier1Provider: 'openrouter',
+        openRouterModel: 'meta-llama/llama-3.3-70b-instruct:free',
+        openRouterFallbackModels: ['openrouter/free', 'google/gemma-4-31b-it:free'],
+        autoFallbackOnLimit: true,
+      });
+
+      const result = await router.executeStep([{ role: 'user', content: 'Search documents' }], 1);
+
+      expect(callCount).toBe(2);
+      expect(requestedModels[0]).toBe('meta-llama/llama-3.3-70b-instruct:free');
+      expect(requestedModels[1]).toBe('openrouter/free');
+      expect(result.response.complete).toBe(true);
+      expect(result.modelUsed).toBe('openrouter/free');
+      expect(result.fallbackNotice).toContain('openrouter/free');
+      expect(router.getConfig().openRouterModel).toBe('openrouter/free');
+    });
+
     it('cross-provider failover: automatically falls over from Groq to OpenRouter when 429 occurs', async () => {
       let groqCalled = false;
       let openRouterCalled = false;

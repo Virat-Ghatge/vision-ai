@@ -1,23 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { ProviderApiKeys, RouterConfig } from '../../../src/lib/llm/types';
-import { KeyRound, Check, Eye, EyeOff, Server, Cpu, Zap, ShieldCheck } from 'lucide-react';
+import {
+  KeyRound,
+  Check,
+  Eye,
+  EyeOff,
+  Server,
+  Cpu,
+  Zap,
+  ShieldCheck,
+  RotateCw,
+  Search,
+  Sparkles,
+} from 'lucide-react';
+import {
+  OpenRouterModelInfo,
+  fetchLiveOpenRouterModels,
+  FALLBACK_OPENROUTER_MODELS,
+} from '../../../src/lib/llm/openrouterModels';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const OPENROUTER_MODELS = [
-  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free ⭐ Recommended)', isFree: true },
-  { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash (Free ⚡ Fast)', isFree: true },
-  { id: 'deepseek/deepseek-chat:free', name: 'DeepSeek V3 (Free)', isFree: true },
-  { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1 (Free 🧠 Reasoning)', isFree: true },
-  { id: 'qwen/qwen-2.5-72b-instruct:free', name: 'Qwen 2.5 72B (Free)', isFree: true },
-  { id: 'meta-llama/llama-3.1-8b-instruct:free', name: 'Llama 3.1 8B (Free ⚡ Instant)', isFree: true },
-  { id: 'anthropic/claude-3.7-sonnet', name: 'Claude 3.7 Sonnet (Paid)', isFree: false },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet (Paid)', isFree: false },
-  { id: 'openai/gpt-4o', name: 'OpenAI GPT-4o (Paid)', isFree: false },
-];
 
 const GROQ_MODELS = [
   { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile (Fast)' },
@@ -49,8 +54,14 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
   const [tier1Pref, setTier1Pref] = useState<'groq' | 'gemini' | 'openrouter'>('openrouter');
   const [tier2Pref, setTier2Pref] = useState<'anthropic' | 'gemini' | 'openrouter'>('openrouter');
 
-  // Specific model selections (just like Dassi AI)
-  const [openRouterModel, setOpenRouterModel] = useState('meta-llama/llama-3.3-70b-instruct:free');
+  // Dynamic OpenRouter models (just like Dassi AI)
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModelInfo[]>(FALLBACK_OPENROUTER_MODELS);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [filterQuery, setFilterQuery] = useState('');
+  const [showFreeOnly, setShowFreeOnly] = useState(true);
+
+  // Active models
+  const [openRouterModel, setOpenRouterModel] = useState('openrouter/free');
   const [customOpenRouter, setCustomOpenRouter] = useState('');
   const [isCustomOpenRouter, setIsCustomOpenRouter] = useState(false);
 
@@ -64,22 +75,30 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  // Load saved configuration and fetch live models on mount / open
   useEffect(() => {
+    if (!isOpen) return;
+
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.get(['apiKeys', 'modelRoutingConfig']).then((data) => {
-        if (data.apiKeys) setKeys((k) => ({ ...k, ...data.apiKeys }));
+      chrome.storage.local.get(['apiKeys', 'modelRoutingConfig']).then(async (data) => {
+        let currentKeys = keys;
+        if (data.apiKeys) {
+          currentKeys = { ...currentKeys, ...data.apiKeys };
+          setKeys(currentKeys);
+        }
+
         if (data.modelRoutingConfig) {
           const cfg = data.modelRoutingConfig as Partial<RouterConfig>;
           if (cfg.preferredTier1Provider) setTier1Pref(cfg.preferredTier1Provider);
           if (cfg.preferredTier2Provider) setTier2Pref(cfg.preferredTier2Provider);
+
           if (cfg.openRouterModel) {
-            const found = OPENROUTER_MODELS.find((m) => m.id === cfg.openRouterModel);
-            if (found) {
-              setOpenRouterModel(cfg.openRouterModel);
+            // Automatically migrate away from retired meta-llama 70b free slug if previously saved
+            if (cfg.openRouterModel.includes('meta-llama/llama-3.3-70b-instruct:free')) {
+              setOpenRouterModel('openrouter/free');
               setIsCustomOpenRouter(false);
             } else {
-              setIsCustomOpenRouter(true);
-              setCustomOpenRouter(cfg.openRouterModel);
+              setOpenRouterModel(cfg.openRouterModel);
             }
           }
           if (cfg.groqModel) setGroqModel(cfg.groqModel);
@@ -89,18 +108,34 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
             setAutoFallback(cfg.autoFallbackOnLimit);
           }
         }
+
+        // Fetch live OpenRouter models
+        loadLiveModels(currentKeys.openrouter, false);
       });
+    } else {
+      loadLiveModels(keys.openrouter, false);
     }
   }, [isOpen]);
+
+  const loadLiveModels = async (apiKey?: string, force = false) => {
+    setIsFetchingModels(true);
+    try {
+      const models = await fetchLiveOpenRouterModels(apiKey, force);
+      if (models.length > 0) {
+        setOpenRouterModels(models);
+      }
+    } finally {
+      setIsFetchingModels(false);
+    }
+  };
 
   const toggleShow = (provider: string) => {
     setShowKey((prev) => ({ ...prev, [provider]: !prev[provider] }));
   };
 
   const handleSave = async () => {
-    const finalOpenRouterModel = isCustomOpenRouter && customOpenRouter.trim()
-      ? customOpenRouter.trim()
-      : openRouterModel;
+    const finalOpenRouterModel =
+      isCustomOpenRouter && customOpenRouter.trim() ? customOpenRouter.trim() : openRouterModel;
 
     const routingConfig: Partial<RouterConfig> = {
       preferredTier1Provider: tier1Pref,
@@ -128,6 +163,14 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
 
   if (!isOpen) return null;
 
+  // Filter models for OpenRouter picker
+  const filteredModels = openRouterModels.filter((m) => {
+    if (showFreeOnly && !m.isFree) return false;
+    if (!filterQuery) return true;
+    const q = filterQuery.toLowerCase();
+    return m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+  });
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 animate-fade-in">
       <div className="bg-orbit-panel border border-orbit-border rounded-xl w-full max-w-md p-4 text-slate-100 shadow-2xl flex flex-col gap-3.5 max-h-[92vh] overflow-y-auto">
@@ -149,7 +192,7 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
         <div className="flex items-start gap-2 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 text-[11px] text-slate-400">
           <ShieldCheck className="w-4 h-4 text-orbit-neon shrink-0 mt-0.5" />
           <span>
-            Configure your AI provider keys and model preferences (just like Dassi AI). Keys are stored locally on your device.
+            Choose models across providers (just like Dassi AI). OpenRouter models are dynamically discovered and verified.
           </span>
         </div>
 
@@ -158,10 +201,10 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
           <div className="flex flex-col pr-2">
             <span className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-amber-400" />
-              Auto-Switch on Usage Limit
+              Auto-Switch on Rate/Usage Limit (404/429)
             </span>
             <span className="text-[10px] text-slate-400">
-              If a model hits 429 rate limit or quota, auto-switch to a free fallback model without interrupting ongoing tasks.
+              If a model becomes unavailable for free or hits quota, auto-switch to a free fallback model without interrupting ongoing tasks.
             </span>
           </div>
           <label className="relative inline-flex items-center cursor-pointer shrink-0">
@@ -185,7 +228,7 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
               onChange={(e) => setTier1Pref(e.target.value as any)}
               className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:border-orbit-neon focus:outline-none"
             >
-              <option value="openrouter">OpenRouter (Free & Paid)</option>
+              <option value="openrouter">OpenRouter (Free Pool & Paid)</option>
               <option value="groq">Groq (Llama 3.3)</option>
               <option value="gemini">Google Gemini</option>
             </select>
@@ -209,12 +252,24 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
           {/* OpenRouter Section */}
           <div className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800 flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-200">OpenRouter (Free Pool Available)</label>
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                Multi-Model Gateway
-              </span>
+              <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-orbit-neon" />
+                OpenRouter Model Picker
+              </label>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => loadLiveModels(keys.openrouter, true)}
+                  disabled={isFetchingModels}
+                  className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded border border-slate-700 transition-colors"
+                  title="Fetch latest models from OpenRouter API"
+                >
+                  <RotateCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
+                  {isFetchingModels ? 'Fetching...' : 'Refresh'}
+                </button>
+              </div>
             </div>
-            
+
             {/* Key Input */}
             <div className="relative">
               <input
@@ -233,9 +288,33 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
               </button>
             </div>
 
-            {/* Model Selector */}
+            {/* Filter and Category Controls */}
+            <div className="flex items-center gap-2 pt-1">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={filterQuery}
+                  onChange={(e) => setFilterQuery(e.target.value)}
+                  placeholder="Filter models (e.g. gemma, free)..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200 pl-6 focus:border-orbit-neon focus:outline-none"
+                />
+                <Search className="w-3 h-3 text-slate-500 absolute left-2 top-2" />
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFreeOnly(!showFreeOnly)}
+                className={`text-[10px] px-2 py-1 rounded border transition-colors ${
+                  showFreeOnly
+                    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                {showFreeOnly ? '✓ Free (0$)' : 'All Models'}
+              </button>
+            </div>
+
+            {/* Model Selector Dropdown */}
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-slate-400 font-medium">Active OpenRouter Model:</label>
               <select
                 value={isCustomOpenRouter ? 'custom' : openRouterModel}
                 onChange={(e) => {
@@ -248,12 +327,14 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
                 }}
                 className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200 focus:border-orbit-neon focus:outline-none"
               >
-                {OPENROUTER_MODELS.map((m) => (
+                {filteredModels.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name}
+                    {m.id === 'openrouter/free'
+                      ? '⭐ openrouter/free (Official Auto-Failover Router)'
+                      : `${m.name} ${m.isFree ? '• [FREE]' : ''} (${Math.round(m.contextLength / 1000)}k ctx)`}
                   </option>
                 ))}
-                <option value="custom">Custom Model Slug...</option>
+                <option value="custom">✏️ Enter Custom Model Slug...</option>
               </select>
 
               {isCustomOpenRouter && (
@@ -261,10 +342,14 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
                   type="text"
                   value={customOpenRouter}
                   onChange={(e) => setCustomOpenRouter(e.target.value)}
-                  placeholder="e.g. mistralai/mistral-large-2411"
+                  placeholder="e.g. google/gemma-4-31b-it:free or openrouter/free"
                   className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs font-mono focus:border-orbit-neon focus:outline-none text-slate-200 mt-1"
                 />
               )}
+
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                💡 <code className="text-orbit-neon">openrouter/free</code> automatically routes to the best live free model on OpenRouter and never 404s.
+              </p>
             </div>
           </div>
 
@@ -311,9 +396,9 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
           {/* Google Gemini Section */}
           <div className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800 flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-200">Google Gemini (Multimodal & Free Tier)</label>
+              <label className="text-xs font-semibold text-slate-200">Google Gemini (Native Vision)</label>
               <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20">
-                Native Vision
+                Multimodal
               </span>
             </div>
             <div className="relative">

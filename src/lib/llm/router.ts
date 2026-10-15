@@ -15,11 +15,12 @@ import { OpenRouterAdapter } from './adapters/openrouter';
 import { OllamaAdapter } from './adapters/ollama';
 
 export const DEFAULT_OPENROUTER_FALLBACKS = [
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemini-2.0-flash-exp:free',
-  'deepseek/deepseek-chat:free',
-  'qwen/qwen-2.5-72b-instruct:free',
-  'meta-llama/llama-3.1-8b-instruct:free',
+  'openrouter/free',
+  'google/gemma-4-31b-it:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'nvidia/nemotron-3-super-120b-a12b:free',
+  'cohere/north-mini-code:free',
+  'liquid/lfm-2.5-2.6b:free',
 ];
 
 export interface StepExecutionResult {
@@ -99,7 +100,7 @@ export class LLMRouter {
       }
 
       if (pref === 'openrouter' && keys.openrouter) {
-        const model = this.config.openRouterModel ?? this.config.tier1Model ?? 'meta-llama/llama-3.3-70b-instruct:free';
+        const model = this.config.openRouterModel ?? this.config.tier1Model ?? 'openrouter/free';
         return {
           provider: new OpenRouterAdapter(keys.openrouter, model),
           activeTier: 1,
@@ -126,7 +127,7 @@ export class LLMRouter {
       }
 
       if (keys.openrouter) {
-        const model = this.config.openRouterModel ?? this.config.tier1Model ?? 'meta-llama/llama-3.3-70b-instruct:free';
+        const model = this.config.openRouterModel ?? this.config.tier1Model ?? 'openrouter/free';
         return {
           provider: new OpenRouterAdapter(keys.openrouter, model),
           activeTier: 1,
@@ -223,17 +224,19 @@ export class LLMRouter {
         modelUsed: activeModel,
       };
     } catch (err: unknown) {
-      const isLimit =
+      const isLimitOrUnavailable =
         err instanceof UsageLimitError ||
         (err instanceof Error &&
-          /rate limit|rate_limit|quota|credit|insufficient|429|402|resource_exhausted/i.test(err.message));
+          /unavailable|rate limit|rate_limit|quota|credit|insufficient|429|402|404|503|502|resource_exhausted|not found|no endpoints|paid version|free tier/i.test(
+            err.message
+          ));
 
-      if (!isLimit || this.config.autoFallbackOnLimit === false) {
+      if (!isLimitOrUnavailable || this.config.autoFallbackOnLimit === false) {
         throw err;
       }
 
       console.warn(
-        `[Vision AI Router] Usage limit reached on ${provider.providerType} (${activeModel}). Attempting automatic seamless model switch...`
+        `[Vision AI Router] Model unavailable or limit reached on ${provider.providerType} (${activeModel}). Attempting automatic seamless model switch...`
       );
 
       // Strategy 1: If OpenRouter, try next model in fallback list
@@ -253,12 +256,22 @@ export class LLMRouter {
             });
             // Update active model so subsequent turns use the working model without interrupting
             this.config.openRouterModel = candidateModel;
+            if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+              chrome.storage.local.get('modelRoutingConfig').then((res) => {
+                const current = (res.modelRoutingConfig as Record<string, unknown>) || {};
+                chrome.storage.local
+                  .set({
+                    modelRoutingConfig: { ...current, openRouterModel: candidateModel },
+                  })
+                  .catch(() => {});
+              });
+            }
             return {
               response: plan,
               activeTier,
               provider: 'openrouter',
               modelUsed: candidateModel,
-              fallbackNotice: `Switched to ${candidateModel} (Rate limit avoided on ${activeModel})`,
+              fallbackNotice: `Auto-switched to ${candidateModel} (${activeModel} was unavailable/limited)`,
             };
           } catch (nextErr) {
             console.warn(`[Vision AI Router] Fallback candidate ${candidateModel} also failed:`, nextErr);

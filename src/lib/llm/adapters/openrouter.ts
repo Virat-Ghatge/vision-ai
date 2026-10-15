@@ -82,13 +82,16 @@ export class OpenRouterAdapter implements LLMProvider {
 
     if (!response.ok) {
       const errText = await response.text();
-      const isLimit =
+      const isLimitOrUnavailable =
         response.status === 429 ||
         response.status === 402 ||
-        /rate limit|quota|credit|insufficient|exceeded/i.test(errText);
-      if (isLimit) {
+        response.status === 404 ||
+        response.status === 502 ||
+        response.status === 503 ||
+        /unavailable|rate limit|rate_limit|quota|credit|insufficient|exceeded|not found|no endpoints|paid version|free tier|free/i.test(errText);
+      if (isLimitOrUnavailable) {
         throw new UsageLimitError(
-          `OpenRouter usage limit or rate limit exceeded (${response.status}): ${errText}`,
+          `OpenRouter model unavailable or limit reached (${response.status}): ${errText}`,
           'openrouter',
           model,
           response.status
@@ -100,8 +103,8 @@ export class OpenRouterAdapter implements LLMProvider {
     const data = (await response.json()) as OpenRouterResponse;
     if (data.error) {
       const msg = data.error.message ?? 'Unknown';
-      if (/rate limit|quota|credit|insufficient|exceeded/i.test(msg)) {
-        throw new UsageLimitError(`OpenRouter error: ${msg}`, 'openrouter', model);
+      if (/unavailable|rate limit|rate_limit|quota|credit|insufficient|exceeded|not found|no endpoints|paid version|free tier|free/i.test(msg)) {
+        throw new UsageLimitError(`OpenRouter model error: ${msg}`, 'openrouter', model);
       }
       throw new Error(`OpenRouter error: ${msg}`);
     }
