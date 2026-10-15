@@ -67,6 +67,15 @@ if (typeof globalThis.chrome === 'undefined') {
     runtime: {
       sendMessage: async () => ({}),
       onMessage: { addListener: () => {} },
+      onInstalled: { addListener: () => {} },
+    },
+    action: {
+      onClicked: { addListener: () => {} },
+    },
+    sidePanel: {
+      setPanelBehavior: async () => {},
+      open: async () => {},
+      setOptions: async () => {},
     },
   };
 }

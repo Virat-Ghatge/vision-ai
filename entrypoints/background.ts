@@ -6,6 +6,46 @@ import { ExtensionMessage } from '../src/lib/agent/types';
 export default defineBackground(() => {
   console.log('[Vision AI] Service Worker background loop initialized.');
 
+  // Automatically open the side panel when the toolbar action icon is clicked
+  if (typeof chrome !== 'undefined') {
+    if (chrome.sidePanel?.setOptions) {
+      chrome.sidePanel.setOptions({ path: 'sidepanel.html', enabled: true }).catch(() => {});
+    }
+
+    if (chrome.sidePanel?.setPanelBehavior) {
+      chrome.sidePanel
+        .setPanelBehavior({ openPanelOnActionClick: true })
+        .catch((err) => console.warn('[Vision AI] Failed to set panel behavior:', err));
+    }
+
+    chrome.runtime?.onInstalled?.addListener(() => {
+      if (chrome.sidePanel?.setOptions) {
+        chrome.sidePanel.setOptions({ path: 'sidepanel.html', enabled: true }).catch(() => {});
+      }
+      if (chrome.sidePanel?.setPanelBehavior) {
+        chrome.sidePanel
+          .setPanelBehavior({ openPanelOnActionClick: true })
+          .catch((err) => console.warn('[Vision AI] onInstalled setPanelBehavior error:', err));
+      }
+    });
+
+    if (chrome.action?.onClicked) {
+      chrome.action.onClicked.addListener(async (tab) => {
+        try {
+          if (chrome.sidePanel?.open) {
+            if (tab.windowId) {
+              await chrome.sidePanel.open({ windowId: tab.windowId });
+            } else if (tab.id) {
+              await chrome.sidePanel.open({ tabId: tab.id });
+            }
+          }
+        } catch (err) {
+          console.warn('[Vision AI] chrome.sidePanel.open error:', err);
+        }
+      });
+    }
+  }
+
   // Default initial router configuration
   const router = new LLMRouter({
     apiKeys: {},

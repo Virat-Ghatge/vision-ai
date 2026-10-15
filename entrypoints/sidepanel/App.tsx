@@ -35,11 +35,19 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     // 1. Fetch current agent state on mount
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'GET_AGENT_STATE' }, (res) => {
-        if (res && typeof res === 'object') {
-          setState(res as AgentSessionState);
-        }
-      });
+      try {
+        chrome.runtime.sendMessage({ type: 'GET_AGENT_STATE' }, (res) => {
+          if (chrome.runtime.lastError) {
+            // Service worker waking up or not ready; state will arrive via broadcast
+            return;
+          }
+          if (res && typeof res === 'object') {
+            setState(res as AgentSessionState);
+          }
+        });
+      } catch (err) {
+        console.warn('[Vision AI] Initial state query warning:', err);
+      }
 
       // 2. Listen for real-time broadcasts from background service worker
       const listener = (msg: { type: string; state?: AgentSessionState }) => {
