@@ -6,3 +6,4 @@ export * from './adapters/groq';
 export * from './adapters/openrouter';
 export * from './adapters/ollama';
 export * from './router';
+export * from './contextManager';

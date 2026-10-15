@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M1.2`
+- **Task ID:** `M1.3`
 - **Status:** `[-]` In Progress
-- **Started At:** 2026-10-15T14:31:00+05:30
-- **Goal:** Implement `ByteStableContextManager` ensuring prefix immutability across steps + token estimator.
+- **Started At:** 2026-10-15T14:32:15+05:30
+- **Goal:** Write Vitest suite verifying Anthropic `cache_control` placement, tiered routing selection, and byte-identical prefixes across 5 simulated steps.
 
 ---
 
@@ -16,8 +16,8 @@
 
 ### Milestone 1: Multi-Provider Router & Byte-Stable Context Manager
 - [x] `M1.1` Implement `LLMRouter` with adapters for Anthropic, Gemini, Groq, OpenRouter, and Ollama.
-- [-] `M1.2` Implement `ByteStableContextManager` ensuring prefix immutability across steps + token estimator.
-- [ ] `M1.3` Write Vitest suite verifying Anthropic `cache_control` placement, tiered routing selection, and byte-identical prefixes across 5 simulated steps.
+- [x] `M1.2` Implement `ByteStableContextManager` ensuring prefix immutability across steps + token estimator.
+- [-] `M1.3` Write Vitest suite verifying Anthropic `cache_control` placement, tiered routing selection, and byte-identical prefixes across 5 simulated steps.
 
 ### Milestone 2: DOM Distiller & Mutation Delta Engine
 - [ ] `M2.1` Build `distiller.ts` with numeric `[ID]` tagging, visibility filtering, and `WeakRef` registry.
@@ -46,6 +46,7 @@
 | 1 | M0.1 | PASS (0 errors) | PASS (2 tests) | PASS (258.73 kB bundle) | N/A (Scaffolding) | Initial project setup with WXT, React 19, Tailwind, Vitest |
 | 2 | M0.2 | PASS (0 errors) | PASS (2 tests) | PASS (258.73 kB bundle) | N/A (Docs/Config) | Created AGENTS.md, LOOP_STATE.md, and token-budget SKILL.md specs |
 | 3 | M1.1 | PASS (0 errors) | PASS (2 tests) | PASS (258.96 kB bundle) | N/A (Router Core) | Implemented LLMRouter and adapters (Anthropic, Gemini, Groq, OpenRouter, Ollama) |
+| 4 | M1.2 | PASS (0 errors) | PASS (2 tests) | PASS (258.96 kB bundle) | N/A (Context Core) | Implemented ByteStableContextManager with prefix hash and token estimator |
 
 ---
 
