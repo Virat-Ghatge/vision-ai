@@ -1,6 +1,6 @@
 import React from 'react';
 import { AgentSessionState } from '../../../src/lib/agent/types';
-import { Play, Pause, Square, Sparkles, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Play, Pause, Square, Sparkles, CheckCircle, AlertCircle, Loader2, RotateCcw } from 'lucide-react';
 
 interface Props {
   state: AgentSessionState;
@@ -10,6 +10,7 @@ interface Props {
   onPause: () => void;
   onResume: () => void;
   onStop: () => void;
+  onReset: () => void;
 }
 
 const QUICK_PROMPTS = [
@@ -26,6 +27,7 @@ export function TaskStream({
   onPause,
   onResume,
   onStop,
+  onReset,
 }: Props): React.JSX.Element {
   const isRunning = state.status === 'running';
   const isPaused = state.status === 'paused';
@@ -44,9 +46,17 @@ export function TaskStream({
           <textarea
             value={prompt}
             onChange={(e) => onPromptChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (prompt.trim() && !isRunning && !isWaiting) {
+                  onStart();
+                }
+              }
+            }}
             disabled={isRunning || isWaiting}
             rows={2}
-            placeholder="Describe what you want Vision AI to do in this browser tab..."
+            placeholder="Describe what you want Vision AI to do in this browser tab... (Press Enter to launch)"
             className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 placeholder-slate-500 focus:border-orbit-accent focus:outline-none resize-none font-sans"
           />
 
@@ -71,6 +81,7 @@ export function TaskStream({
             <div className="flex items-center gap-1.5">
               {isRunning && (
                 <button
+                  type="button"
                   onClick={onPause}
                   className="flex items-center gap-1 px-3 py-1.5 bg-amber-600/80 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors"
                 >
@@ -79,6 +90,7 @@ export function TaskStream({
               )}
               {isPaused && (
                 <button
+                  type="button"
                   onClick={onResume}
                   className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition-colors"
                 >
@@ -87,21 +99,46 @@ export function TaskStream({
               )}
               {(isRunning || isPaused || isWaiting) && (
                 <button
+                  type="button"
                   onClick={onStop}
                   className="flex items-center gap-1 px-3 py-1.5 bg-rose-900/60 hover:bg-rose-900 text-rose-200 border border-rose-800/80 rounded-lg text-xs font-semibold transition-colors"
                 >
                   <Square className="w-3.5 h-3.5" /> Stop
                 </button>
               )}
+              {(isCompleted || isError) && (
+                <button
+                  type="button"
+                  onClick={onReset}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 rounded-lg text-xs font-semibold transition-colors"
+                  title="Clear session and start a new task"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> New Task
+                </button>
+              )}
             </div>
 
-            {state.status === 'idle' && (
+            {/* Launch / Re-run Button */}
+            {!isRunning && !isPaused && !isWaiting && (
               <button
+                type="button"
                 onClick={onStart}
                 disabled={!prompt.trim()}
                 className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-500 to-orbit-neon hover:from-emerald-400 hover:to-orbit-500 disabled:opacity-40 text-slate-950 font-bold rounded-lg text-xs shadow-md transition-all ml-auto"
               >
-                <Sparkles className="w-3.5 h-3.5" /> Launch Vision AI
+                {isCompleted ? (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" /> Run Next Step
+                  </>
+                ) : isError ? (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" /> Retry Task
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" /> Launch Vision AI
+                  </>
+                )}
               </button>
             )}
           </div>
@@ -150,8 +187,21 @@ export function TaskStream({
           </div>
         )}
 
+        {/* Completed Result Card */}
+        {isCompleted && state.currentThought && (
+          <div className="bg-emerald-950/40 border border-emerald-500/50 rounded-lg p-3 text-xs text-emerald-100 flex flex-col gap-1.5 shadow-sm">
+            <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[11px] uppercase tracking-wide">
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span>Final Outcome / Answer</span>
+            </div>
+            <div className="text-slate-100 font-sans leading-relaxed whitespace-pre-wrap select-text">
+              {state.currentThought}
+            </div>
+          </div>
+        )}
+
         {/* Thought Bubble */}
-        {state.currentThought && (
+        {!isCompleted && state.currentThought && (
           <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300 italic flex items-start gap-2">
             <span className="text-orbit-accent font-bold not-italic">Thought:</span>
             <span>{state.currentThought}</span>

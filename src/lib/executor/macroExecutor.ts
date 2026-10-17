@@ -57,6 +57,7 @@ export class MacroBatchExecutor {
   async executeBatch(actions: MacroAction[]): Promise<MacroExecutionResult> {
     const executedTraces: ActionTrace[] = [];
     const initialUrl = this.getCurrentUrl();
+    let lastTargetEl: HTMLElement | null = null;
 
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
@@ -115,11 +116,17 @@ export class MacroBatchExecutor {
             executedTraces,
           };
         }
+      } else if (action.type === 'press' && lastTargetEl && lastTargetEl.isConnected) {
+        targetEl = lastTargetEl;
+      }
+
+      if (targetEl) {
+        lastTargetEl = targetEl;
       }
 
       // Execute atomic action
       try {
-        await this.executeSingleAction(action, targetEl);
+        await this.executeSingleAction(action, targetEl, lastTargetEl);
         executedTraces.push({
           action,
           timestamp: Date.now(),
@@ -156,16 +163,27 @@ export class MacroBatchExecutor {
     };
   }
 
-  private async executeSingleAction(action: MacroAction, targetEl: HTMLElement | null): Promise<void> {
+  private async executeSingleAction(
+    action: MacroAction,
+    targetEl: HTMLElement | null,
+    lastTargetEl?: HTMLElement | null
+  ): Promise<void> {
     const coords = action.id !== undefined ? this.registry.getCenterCoordinates(action.id) : null;
 
     switch (action.type) {
       case 'click': {
+        if (targetEl) {
+          try {
+            targetEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+          } catch {}
+        }
         if (this.actuator) {
           const res = await this.actuator.click(coords, targetEl);
           if (!res.success) throw new Error(res.error ?? 'Click failed');
         } else if (targetEl) {
           targetEl.focus();
+          targetEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+          targetEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
           targetEl.click();
         } else {
           throw new Error(`Target element for click [${action.id}] not found`);
@@ -175,13 +193,27 @@ export class MacroBatchExecutor {
 
       case 'fill': {
         const val = action.value ?? '';
+        if (targetEl) {
+          try {
+            targetEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+          } catch {}
+        }
         if (this.actuator) {
           const res = await this.actuator.type(val, coords, targetEl);
           if (!res.success) throw new Error(res.error ?? 'Fill failed');
         } else if (targetEl) {
           targetEl.focus();
           if (targetEl instanceof HTMLInputElement || targetEl instanceof HTMLTextAreaElement) {
-            targetEl.value = val;
+            const proto =
+              targetEl instanceof HTMLInputElement
+                ? window.HTMLInputElement.prototype
+                : window.HTMLTextAreaElement.prototype;
+            const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (nativeSetter) {
+              nativeSetter.call(targetEl, val);
+            } else {
+              targetEl.value = val;
+            }
             targetEl.dispatchEvent(new Event('input', { bubbles: true }));
             targetEl.dispatchEvent(new Event('change', { bubbles: true }));
           } else if (targetEl.isContentEditable) {
@@ -208,13 +240,46 @@ export class MacroBatchExecutor {
 
       case 'press': {
         const key = action.value ?? 'Enter';
+        const active = targetEl || lastTargetEl || (typeof document !== 'undefined' ? (document.activeElement as HTMLElement) || document.body : null);
         if (this.actuator) {
-          const res = await this.actuator.pressKey(key, targetEl);
+          const res = await this.actuator.pressKey(key, active);
           if (!res.success) throw new Error(res.error ?? 'Press failed');
-        } else if (targetEl || typeof document !== 'undefined') {
-          const active = targetEl || document.activeElement || document.body;
-          active.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
-          active.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
+        } else if (active) {
+          const keyCode = key === 'Enter' ? 13 : key === 'Tab' ? 9 : key === 'Escape' ? 27 : key === 'Backspace' ? 8 : 0;
+          const eventInit: KeyboardEventInit = {
+            key,
+            code: key,
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          };
+          const keydown = new KeyboardEvent('keydown', eventInit);
+          Object.defineProperty(keydown, 'keyCode', { get: () => keyCode });
+          Object.defineProperty(keydown, 'which', { get: () => keyCode });
+          active.dispatchEvent(keydown);
+
+          const keypress = new KeyboardEvent('keypress', eventInit);
+          Object.defineProperty(keypress, 'keyCode', { get: () => keyCode });
+          Object.defineProperty(keypress, 'which', { get: () => keyCode });
+          active.dispatchEvent(keypress);
+
+          const keyup = new KeyboardEvent('keyup', eventInit);
+          Object.defineProperty(keyup, 'keyCode', { get: () => keyCode });
+          Object.defineProperty(keyup, 'which', { get: () => keyCode });
+          active.dispatchEvent(keyup);
+
+          if (key === 'Enter') {
+            const form = active instanceof HTMLInputElement ? active.form : (active.closest ? active.closest('form') : null);
+            if (form) {
+              try {
+                if (typeof form.requestSubmit === 'function') {
+                  form.requestSubmit();
+                } else {
+                  form.submit();
+                }
+              } catch {}
+            }
+          }
         }
         break;
       }

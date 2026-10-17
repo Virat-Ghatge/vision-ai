@@ -34,7 +34,7 @@ export class GeminiAdapter implements LLMProvider {
   private apiKey: string;
   private defaultModel: string;
 
-  constructor(apiKey: string, defaultModel = 'gemini-2.5-flash') {
+  constructor(apiKey: string, defaultModel = 'gemini-3.8-flash') {
     this.apiKey = apiKey;
     this.defaultModel = defaultModel;
   }
@@ -107,6 +107,12 @@ export class GeminiAdapter implements LLMProvider {
           maxOutputTokens: options?.maxTokens ?? 1024,
           responseMimeType: 'application/json',
         },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+        ],
       }),
       signal: options?.signal,
     });
@@ -130,7 +136,11 @@ export class GeminiAdapter implements LLMProvider {
       throw new Error(`Gemini API error (${response.status}): ${errText}`);
     }
 
-    const data = (await response.json()) as GeminiResponse;
+    const data = (await response.json()) as GeminiResponse & {
+      promptFeedback?: { blockReason?: string };
+      candidates?: Array<GeminiCandidate & { finishReason?: string }>;
+    };
+
     if (data.error) {
       const msg = data.error.message ?? 'Unknown';
       if (/resource_exhausted|quota|rate limit|rate_limit|not found|deprecated|unavailable/i.test(msg)) {
@@ -139,7 +149,17 @@ export class GeminiAdapter implements LLMProvider {
       throw new Error(`Gemini error: ${msg}`);
     }
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const candidate = data.candidates?.[0];
+    if (candidate?.finishReason === 'SAFETY' || data.promptFeedback?.blockReason === 'SAFETY') {
+      const reason = data.promptFeedback?.blockReason || candidate?.finishReason || 'SAFETY';
+      return JSON.stringify({
+        thought: `Gemini safety filter flagged this request (${reason}). Please rephrase your goal or navigate to another page.`,
+        actions: [],
+        complete: true,
+      });
+    }
+
+    const text = candidate?.content?.parts?.[0]?.text ?? '';
     return text;
   }
 }

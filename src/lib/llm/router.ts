@@ -32,10 +32,14 @@ export const DEFAULT_GROQ_FALLBACKS = [
 ];
 
 export const DEFAULT_GEMINI_FALLBACKS = [
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.1-pro-preview',
+  'gemini-4-argon',
+  'gemini-3-flash-preview',
+  'gemini-3.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
 ];
 
 export interface StepExecutionResult {
@@ -137,7 +141,7 @@ export class LLMRouter {
       }
 
       if (pref === 'gemini' && keys.gemini) {
-        const model = this.config.geminiModel ?? this.config.tier1Model ?? 'gemini-2.0-flash';
+        const model = this.config.geminiModel ?? this.config.tier1Model ?? 'gemini-3.8-flash';
         return {
           provider: new GeminiAdapter(keys.gemini, model),
           activeTier: 1,
@@ -164,7 +168,7 @@ export class LLMRouter {
       }
 
       if (keys.gemini) {
-        const model = this.config.geminiModel ?? this.config.tier1Model ?? 'gemini-2.0-flash';
+        const model = this.config.geminiModel ?? this.config.tier1Model ?? 'gemini-3.8-flash';
         return {
           provider: new GeminiAdapter(keys.gemini, model),
           activeTier: 1,
@@ -180,7 +184,7 @@ export class LLMRouter {
     const pref2 = this.config.preferredTier2Provider ?? 'anthropic';
 
     if (pref2 === 'gemini' && keys.gemini) {
-      const model = this.config.geminiModel ?? this.config.tier2Model ?? 'gemini-2.5-pro';
+      const model = this.config.geminiModel ?? this.config.tier2Model ?? 'gemini-3.1-pro-preview';
       return {
         provider: new GeminiAdapter(keys.gemini, model),
         activeTier: 2,
@@ -207,7 +211,7 @@ export class LLMRouter {
     }
 
     if (keys.gemini) {
-      const model = this.config.geminiModel ?? this.config.tier2Model ?? 'gemini-2.5-pro';
+      const model = this.config.geminiModel ?? this.config.tier2Model ?? 'gemini-3.1-pro-preview';
       return {
         provider: new GeminiAdapter(keys.gemini, model),
         activeTier: 2,
@@ -374,7 +378,7 @@ export class LLMRouter {
         alternates.push({
           type: 'gemini',
           create: () => {
-            const m = this.config.geminiModel ?? 'gemini-2.0-flash';
+            const m = this.config.geminiModel ?? 'gemini-3.8-flash';
             return {
               provider: new GeminiAdapter(this.config.apiKeys.gemini!, m),
               model: m,

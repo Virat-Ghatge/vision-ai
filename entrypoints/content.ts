@@ -7,10 +7,19 @@ import { ExtensionMessage } from '../src/lib/agent/types';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
+  allFrames: true,
   main() {
     console.log('[Vision AI] Content script active with 4-layer distillation engine.');
 
     const deltaTracker = new DOMDeltaTracker(globalElementRegistry);
+    if (document.body || document.documentElement) {
+      deltaTracker.start(document.body || document.documentElement);
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        deltaTracker.start(document.body || document.documentElement);
+      });
+    }
+
     const executor = new MacroBatchExecutor({
       registry: globalElementRegistry,
       deltaTracker,
@@ -23,14 +32,27 @@ export default defineContentScript({
       switch (message.type) {
         case 'DISTILL_VIEWPORT': {
           const result = distillViewport(document, globalElementRegistry);
-          deltaTracker.start(document.body);
-          sendResponse({ text: result.text, count: result.interactiveCount });
+          deltaTracker.start(document.body || document.documentElement);
+          sendResponse({
+            text: result.text,
+            count: result.interactiveCount,
+            url: window.location.href,
+            title: document.title,
+          });
           return true;
         }
 
         case 'GET_DELTA': {
           const delta = deltaTracker.flushDelta();
-          sendResponse({ text: delta.text, hasAlertOrError: delta.hasAlertOrError });
+          sendResponse({
+            text: delta.text,
+            hasAlertOrError: delta.hasAlertOrError,
+            addedCount: delta.addedCount,
+            modifiedCount: delta.modifiedCount,
+            removedCount: delta.removedCount,
+            url: window.location.href,
+            title: document.title,
+          });
           return true;
         }
 

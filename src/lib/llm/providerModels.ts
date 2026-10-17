@@ -107,7 +107,7 @@ export async function fetchLiveGroqModels(
             models: parsed,
           },
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     return parsed.length > 0 ? parsed : FALLBACK_GROQ_MODELS;
@@ -122,29 +122,68 @@ export async function fetchLiveGroqModels(
 
 export const FALLBACK_GEMINI_MODELS: ProviderModelInfo[] = [
   {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash (Fast & Vision ⭐ Recommended)',
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash (High-Speed Workhorse ⭐ Recommended)',
     contextLength: 1048576,
     isFree: true,
-    description: 'Next-gen multimodal model with native high-speed tool use.',
+    description: 'High-speed workhorse model with native multimodal tool calling.',
   },
   {
-    id: 'gemini-2.0-flash-lite',
-    name: 'Gemini 2.0 Flash Lite (Ultra-fast)',
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash (Mid-Tier High-Efficiency)',
     contextLength: 1048576,
     isFree: true,
+    description: 'Mid-tier high-efficiency flash model.',
   },
   {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash (Stable)',
-    contextLength: 1048576,
-    isFree: true,
-  },
-  {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro (Deep Multi-step Reasoning)',
+    id: 'gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro Preview (Complex Reasoning)',
     contextLength: 2097152,
     isFree: false,
+    description: 'Complex reasoning and broad world knowledge model.',
+  },
+  {
+    id: 'gemini-4-argon',
+    name: 'Gemini 4 Argon (Advanced Next-Gen Flagship)',
+    contextLength: 2097152,
+    isFree: false,
+    description: 'Advanced next-generation flagship model.',
+  },
+  {
+    id: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash Preview (3-Series Fast Preview)',
+    contextLength: 1048576,
+    isFree: true,
+  },
+  {
+    id: 'gemini-3.5-flash-lite',
+    name: 'Gemini 3.5 Flash-Lite (Cost-Optimized High-Volume)',
+    contextLength: 1048576,
+    isFree: true,
+  },
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash (Fast)',
+    contextLength: 1048576,
+    isFree: true,
+  },
+  {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro (Deep Reasoning)',
+    contextLength: 2097152,
+    isFree: false,
+  },
+  {
+    id: 'gemma-4',
+    name: 'Gemma 4 (Next-Gen Open Model)',
+    contextLength: 131072,
+    isFree: true,
+  },
+  {
+    id: 'gemma-3-27b',
+    name: 'Gemma 3 27B (Open Weights)',
+    contextLength: 131072,
+    isFree: true,
   },
 ];
 
@@ -201,12 +240,12 @@ export async function fetchLiveGeminiModels(
         };
       });
 
-    // Sort: 2.0-flash first, then flash variants, then pro
+    // Sort: 3.8-flash first, then 3.6-flash, then 3.1-pro, then other flash, then name
     parsed.sort((a, b) => {
-      if (a.id === 'gemini-2.0-flash') return -1;
-      if (b.id === 'gemini-2.0-flash') return 1;
-      if (a.id === 'gemini-1.5-flash') return -1;
-      if (b.id === 'gemini-1.5-flash') return 1;
+      if (a.id === 'gemini-3.8-flash') return -1;
+      if (b.id === 'gemini-3.8-flash') return 1;
+      if (a.id === 'gemini-3.6-flash') return -1;
+      if (b.id === 'gemini-3.6-flash') return 1;
       return a.name.localeCompare(b.name);
     });
 
@@ -218,7 +257,7 @@ export async function fetchLiveGeminiModels(
             models: parsed,
           },
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     return parsed.length > 0 ? parsed : FALLBACK_GEMINI_MODELS;

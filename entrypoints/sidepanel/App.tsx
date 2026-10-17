@@ -6,14 +6,14 @@ import { SkillsDrawer } from './components/SkillsDrawer';
 import { ApprovalModal } from './components/ApprovalModal';
 import { TaskStream } from './components/TaskStream';
 import { SiteSkill } from '../../src/lib/skills/skillStore';
-import { KeyRound, Sparkles, Orbit } from 'lucide-react';
+import { KeyRound, Sparkles, Orbit, Globe, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const INITIAL_STATE: AgentSessionState = {
   status: 'idle',
   goal: '',
   tabId: 0,
   stepNumber: 0,
-  maxSteps: 15,
+  maxSteps: 25,
   currentThought: '',
   pendingActions: [],
   requiresApproval: false,
@@ -26,11 +26,45 @@ const INITIAL_STATE: AgentSessionState = {
   completedTraces: [],
 };
 
+interface ActiveTabInfo {
+  id?: number;
+  title?: string;
+  url?: string;
+  isInternal?: boolean;
+}
+
 export default function App(): React.JSX.Element {
   const [state, setState] = useState<AgentSessionState>(INITIAL_STATE);
   const [prompt, setPrompt] = useState('');
   const [vaultOpen, setVaultOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<ActiveTabInfo>({});
+
+  const refreshActiveTab = async () => {
+    if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (tab) {
+          const url = tab.url || '';
+          const isInternal =
+            url.startsWith('chrome://') ||
+            url.startsWith('chrome-extension://') ||
+            url.startsWith('edge://') ||
+            url.startsWith('devtools://') ||
+            url.startsWith('about:');
+
+          setActiveTab({
+            id: tab.id,
+            title: tab.title || (isInternal ? 'Chrome Internal Page' : 'Current Webpage'),
+            url: tab.url,
+            isInternal,
+          });
+        }
+      } catch (err) {
+        console.warn('[Vision AI] Error querying active tab:', err);
+      }
+    }
+  };
 
   useEffect(() => {
     // 1. Fetch current agent state on mount
@@ -57,18 +91,67 @@ export default function App(): React.JSX.Element {
       };
 
       chrome.runtime.onMessage.addListener(listener);
-      return () => chrome.runtime.onMessage.removeListener(listener);
+
+      // 3. Track active browser tab
+      refreshActiveTab();
+      const onTabActivated = () => refreshActiveTab();
+      const onTabUpdated = () => refreshActiveTab();
+      chrome.tabs?.onActivated?.addListener(onTabActivated);
+      chrome.tabs?.onUpdated?.addListener(onTabUpdated);
+
+      return () => {
+        chrome.runtime.onMessage.removeListener(listener);
+        chrome.tabs?.onActivated?.removeListener(onTabActivated);
+        chrome.tabs?.onUpdated?.removeListener(onTabUpdated);
+      };
     }
   }, []);
 
-  const handleStartTask = (taskGoal?: string) => {
+  const handleStartTask = async (taskGoal?: string) => {
     const goalToRun = taskGoal ?? prompt;
     if (!goalToRun.trim()) return;
 
+    let targetTabId = activeTab.id;
+
+    // Refresh active tab in real time to ensure we target the current webpage
+    if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (tab?.id) {
+          targetTabId = tab.id;
+          const url = tab.url || '';
+          const isInternal =
+            url.startsWith('chrome://') ||
+            url.startsWith('chrome-extension://') ||
+            url.startsWith('edge://') ||
+            url.startsWith('devtools://') ||
+            url.startsWith('about:');
+
+          if (isInternal) {
+            setState((prev) => ({
+              ...prev,
+              status: 'error',
+              error:
+                'Vision AI cannot automate internal Chrome pages (chrome://). Please open or switch to any website (e.g. google.com or wikipedia.org) and try again.',
+            }));
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[Vision AI] Failed to query tab before launch:', err);
+      }
+    }
+
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'START_TASK', goal: goalToRun }, () => {
+      chrome.runtime.sendMessage({ type: 'START_TASK', goal: goalToRun, tabId: targetTabId }, () => {
         // optimistic status
-        setState((prev) => ({ ...prev, status: 'running', goal: goalToRun, stepNumber: 1 }));
+        setState((prev) => ({
+          ...prev,
+          status: 'running',
+          goal: goalToRun,
+          stepNumber: 1,
+          error: undefined,
+        }));
       });
     }
   };
@@ -90,6 +173,18 @@ export default function App(): React.JSX.Element {
       chrome.runtime.sendMessage({ type: 'STOP_TASK' }, () => {
         setState((prev) => ({ ...prev, status: 'idle' }));
       });
+    }
+  };
+
+  const handleReset = () => {
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({ type: 'STOP_TASK' }, () => {
+        setState(INITIAL_STATE);
+        setPrompt('');
+      });
+    } else {
+      setState(INITIAL_STATE);
+      setPrompt('');
     }
   };
 
@@ -149,6 +244,46 @@ export default function App(): React.JSX.Element {
         </div>
       </header>
 
+      {/* Target Webpage Status Bar */}
+      <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 mb-2.5 text-[11px] shadow-sm">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              activeTab.isInternal
+                ? 'bg-amber-400 animate-pulse'
+                : activeTab.url
+                ? 'bg-emerald-400'
+                : 'bg-slate-500'
+            }`}
+          />
+          <Globe className="w-3 h-3 text-slate-400 shrink-0" />
+          <span className="text-slate-400 shrink-0 font-medium">Page:</span>
+          <span
+            className="text-slate-200 truncate font-mono text-[10.5px]"
+            title={activeTab.url || 'No active tab detected'}
+          >
+            {activeTab.title || (activeTab.url ? activeTab.url : 'Detecting tab...')}
+          </span>
+        </div>
+        <button
+          onClick={refreshActiveTab}
+          title="Refresh active tab connection"
+          className="text-slate-500 hover:text-slate-300 ml-2 p-0.5 rounded transition-colors shrink-0"
+        >
+          <RefreshCw className="w-3 h-3" />
+        </button>
+      </div>
+
+      {activeTab.isInternal && (
+        <div className="flex items-start gap-1.5 bg-amber-950/40 border border-amber-600/30 rounded-lg px-2.5 py-2 mb-2.5 text-[11px] text-amber-300">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+          <span>
+            Target is a Chrome internal page (<code>{activeTab.url?.slice(0, 20)}...</code>). Switch your browser tab to a website like{' '}
+            <strong className="text-amber-200">google.com</strong> or <strong className="text-amber-200">wikipedia.org</strong> to automate.
+          </span>
+        </div>
+      )}
+
       {/* Token Telemetry HUD */}
       <div className="mb-3">
         <TokenTelemetryHUD
@@ -168,6 +303,7 @@ export default function App(): React.JSX.Element {
         onPause={handlePause}
         onResume={handleResume}
         onStop={handleStop}
+        onReset={handleReset}
       />
 
       {/* Human-in-the-Loop Intercept Modal */}

@@ -8,3 +8,10 @@ coverage/
 Thumbs.db
 .env
 .env.local
+
+# Media & Screen Recordings
+*.mp4
+*.webm
+*.mov
+*.mkv
+*.avi

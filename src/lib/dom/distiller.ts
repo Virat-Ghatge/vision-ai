@@ -64,7 +64,17 @@ export class ElementRegistry {
 // Global registry singleton for content script execution
 export const globalElementRegistry = new ElementRegistry();
 
-const INTERACTIVE_TAGS = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']);
+const INTERACTIVE_TAGS = new Set([
+  'A',
+  'BUTTON',
+  'INPUT',
+  'SELECT',
+  'TEXTAREA',
+  'SUMMARY',
+  'DETAILS',
+  'LABEL',
+]);
+
 export const INTERACTIVE_ROLES = new Set([
   'button',
   'link',
@@ -81,28 +91,51 @@ export const INTERACTIVE_ROLES = new Set([
   'status',
   'dialog',
   'alertdialog',
+  'treeitem',
+  'listitem',
+  'row',
+  'gridcell',
+  'article',
+  'region',
+  'menu',
 ]);
-const LANDMARK_TAGS = new Set(['H1', 'NAV', 'FORM', 'DIALOG']);
+
+const LANDMARK_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'NAV', 'FORM', 'DIALOG', 'HEADER', 'MAIN']);
 
 /**
  * Checks if an element is visible in the current viewport.
+ * Uses native checkVisibility (Chrome 105+) with fallback for fast, low-overhead evaluation.
  */
 export function isElementVisible(el: HTMLElement, win: Window = window): boolean {
   if (!el.isConnected) return false;
-  if (el.hasAttribute('hidden') || el.closest('[hidden]')) return false;
+  if (el.hasAttribute('hidden') || el.closest?.('[hidden]')) return false;
 
-  let cur: HTMLElement | null = el;
-  while (cur) {
-    if (cur.style?.display === 'none' || cur.style?.visibility === 'hidden' || cur.style?.opacity === '0') {
-      return false;
-    }
-    const curStyle = win.getComputedStyle ? win.getComputedStyle(cur) : null;
-    if (curStyle) {
-      if (curStyle.display === 'none' || curStyle.visibility === 'hidden' || curStyle.opacity === '0') {
+  // Use fast native browser checkVisibility API when available (Chrome 105+)
+  if (typeof (el as any).checkVisibility === 'function') {
+    try {
+      if (!(el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
         return false;
       }
+    } catch {
+      // Fallback if unexpected error
     }
-    cur = cur.parentElement;
+  } else {
+    // Fallback for jsdom / older environments (shallow ancestor check to avoid deep reflow)
+    let cur: HTMLElement | null = el;
+    let depth = 0;
+    while (cur && depth < 8) {
+      if (cur.style?.display === 'none' || cur.style?.visibility === 'hidden' || cur.style?.opacity === '0') {
+        return false;
+      }
+      const curStyle = win.getComputedStyle ? win.getComputedStyle(cur) : null;
+      if (curStyle) {
+        if (curStyle.display === 'none' || curStyle.visibility === 'hidden' || curStyle.opacity === '0') {
+          return false;
+        }
+      }
+      cur = cur.parentElement;
+      depth++;
+    }
   }
 
   const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
@@ -124,7 +157,7 @@ export function isElementVisible(el: HTMLElement, win: Window = window): boolean
 /**
  * Determines whether a DOM node is interactive or a semantic landmark.
  */
-export function isCandidateNode(el: HTMLElement): boolean {
+export function isCandidateNode(el: HTMLElement, win: Window = window): boolean {
   const tagName = el.tagName.toUpperCase();
 
   if (INTERACTIVE_TAGS.has(tagName)) {
@@ -146,6 +179,43 @@ export function isCandidateNode(el: HTMLElement): boolean {
 
   const tabIndex = el.getAttribute('tabindex');
   if (tabIndex !== null && parseInt(tabIndex, 10) >= 0) {
+    return true;
+  }
+
+  // Interactive attributes: onclick, aria-expanded, aria-controls, data-action
+  if (
+    el.hasAttribute('onclick') ||
+    el.hasAttribute('aria-expanded') ||
+    el.hasAttribute('aria-controls') ||
+    el.hasAttribute('data-action') ||
+    el.hasAttribute('data-clickable')
+  ) {
+    return true;
+  }
+
+  // Check cursor: pointer (CSS styled clickable elements)
+  if (typeof win !== 'undefined' && win.getComputedStyle) {
+    try {
+      const curStyle = win.getComputedStyle(el);
+      if (curStyle && curStyle.cursor === 'pointer') {
+        return true;
+      }
+    } catch {}
+  }
+
+  // Common interactive/module class patterns on LMS and course platforms (NetAcad, Canvas, Coursera)
+  const className = (el.className || '').toString().toLowerCase();
+  if (
+    (className.includes('module') ||
+      className.includes('lesson') ||
+      className.includes('topic') ||
+      className.includes('chapter') ||
+      className.includes('accordion') ||
+      className.includes('clickable') ||
+      className.includes('btn')) &&
+    (el.textContent || '').trim().length > 0 &&
+    (el.textContent || '').trim().length < 120
+  ) {
     return true;
   }
 
@@ -211,6 +281,7 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
 
 export interface DistillOptions {
   maxItems?: number;
+  includeHeader?: boolean;
 }
 
 export interface DistillResult {
@@ -239,13 +310,23 @@ export function distillViewport(
     return { text: '(Empty document)', totalElements: 0, interactiveCount: 0 };
   }
 
+  const doc = root instanceof Document ? root : root.ownerDocument;
+  const pageTitle = doc?.title?.trim() || '';
+  const pageUrl = win.location?.href && !win.location.href.startsWith('about:') ? win.location.href : '';
+
+  if (options?.includeHeader ?? true) {
+    if (pageTitle || pageUrl) {
+      lines.push(`PAGE: ${pageTitle || '(Untitled)'} [${pageUrl || 'current-tab'}]`);
+    }
+  }
+
   const elements = walker.querySelectorAll<HTMLElement>('*');
   totalWalked = elements.length;
 
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i];
 
-    if (!isCandidateNode(el)) continue;
+    if (!isCandidateNode(el, win)) continue;
     if (!isElementVisible(el, win)) continue;
 
     // Check if element has an interactive ancestor already capturing it
@@ -262,6 +343,37 @@ export function distillViewport(
     const id = registry.register(el);
     lines.push(formatElementDescriptor(el, id));
     interactiveCount++;
+  }
+
+  // Traverse same-origin iframes (e.g. Cisco NetAcad curriculum viewer or embedded modules)
+  try {
+    const iframes = walker.querySelectorAll<HTMLIFrameElement>('iframe');
+    for (let f = 0; f < iframes.length && interactiveCount < maxItems; f++) {
+      try {
+        const frameDoc = iframes[f].contentDocument;
+        if (frameDoc && frameDoc.body) {
+          const frameEls = frameDoc.body.querySelectorAll<HTMLElement>('*');
+          for (let j = 0; j < frameEls.length && interactiveCount < maxItems; j++) {
+            const fEl = frameEls[j];
+            if (!isCandidateNode(fEl, win)) continue;
+            if (!isElementVisible(fEl, win)) continue;
+            const id = registry.register(fEl);
+            lines.push(formatElementDescriptor(fEl, id));
+            interactiveCount++;
+          }
+        }
+      } catch {
+        // Cross-origin iframes are handled via content script allFrames: true
+      }
+    }
+  } catch {}
+
+  // If no interactive elements found, provide a text snippet so Vision AI is never blind
+  if (interactiveCount === 0) {
+    const textSnippet = (walker.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (textSnippet) {
+      lines.push(`(No interactive elements in viewport. Page text summary: "${textSnippet}")`);
+    }
   }
 
   return {

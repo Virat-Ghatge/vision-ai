@@ -53,9 +53,15 @@ if (typeof globalThis.chrome === 'undefined') {
       },
     },
     tabs: {
-      query: async () => [{ id: 1, url: 'https://example.com' }],
+      get: async (tabId: number) => ({ id: tabId, url: 'https://example.com', title: 'Example Domain' }),
+      query: async () => [{ id: 1, url: 'https://example.com', title: 'Example Domain' }],
       sendMessage: async () => ({ success: true }),
       captureVisibleTab: async () => 'data:image/webp;base64,mockWebpData',
+      onActivated: { addListener: () => {}, removeListener: () => {} },
+      onUpdated: { addListener: () => {}, removeListener: () => {} },
+    },
+    scripting: {
+      executeScript: async () => [{ result: 'distilled DOM text' }],
     },
     debugger: {
       attach: async () => {},

@@ -172,5 +172,29 @@ describe('M3: CDP Actuator, Speculative Macro-Batch Runner & Vision Fallback Sui
       expect(typeRes.method).toBe('synthetic');
       expect(input.value).toBe('hello world');
     });
+
+    it('submits form on press Enter in input field', async () => {
+      const form = document.createElement('form');
+      const input = document.createElement('input');
+      form.appendChild(input);
+      document.body.appendChild(form);
+
+      let formSubmitted = false;
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        formSubmitted = true;
+      });
+
+      const id = registry.register(input);
+      const executor = new MacroBatchExecutor({ registry });
+
+      await executor.executeBatch([
+        { type: 'fill', id, value: 'Vision AI Search' },
+        { type: 'press', id, value: 'Enter' },
+      ]);
+
+      expect(input.value).toBe('Vision AI Search');
+      expect(formSubmitted).toBe(true);
+    });
   });
 });

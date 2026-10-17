@@ -70,7 +70,7 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
   const [geminiModels, setGeminiModels] = useState<ProviderModelInfo[]>(FALLBACK_GEMINI_MODELS);
   const [isFetchingGemini, setIsFetchingGemini] = useState(false);
   const [geminiFilter, setGeminiFilter] = useState('');
-  const [geminiModel, setGeminiModel] = useState('gemini-2.0-flash');
+  const [geminiModel, setGeminiModel] = useState('gemini-3.8-flash');
   const [customGemini, setCustomGemini] = useState('');
   const [isCustomGemini, setIsCustomGemini] = useState(false);
 
@@ -115,9 +115,13 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
             setGroqModel(cfg.groqModel);
           }
 
-          // Gemini
+          // Gemini - automatically migrate legacy 2.0/1.5 models to 3.8-flash workhorse
           if (cfg.geminiModel) {
-            setGeminiModel(cfg.geminiModel);
+            if (cfg.geminiModel.includes('gemini-2.0') || cfg.geminiModel.includes('gemini-1.5')) {
+              setGeminiModel('gemini-3.8-flash');
+            } else {
+              setGeminiModel(cfg.geminiModel);
+            }
           }
 
           if (cfg.anthropicModel) setAnthropicModel(cfg.anthropicModel);

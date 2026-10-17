@@ -92,13 +92,24 @@ export default defineBackground(() => {
       case 'START_TASK': {
         const getTabId = async (): Promise<number> => {
           if (message.tabId) return message.tabId;
-          const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          return activeTab?.id ?? 0;
+          try {
+            const [lastFocused] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+            if (lastFocused?.id) return lastFocused.id;
+          } catch {}
+          try {
+            const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (activeTab?.id) return activeTab.id;
+          } catch {}
+          try {
+            const allTabs = await chrome.tabs.query({ active: true });
+            if (allTabs[0]?.id) return allTabs[0].id;
+          } catch {}
+          return 0;
         };
 
-        getTabId().then((tabId) => {
-          stateMachine.startTask(message.goal, tabId);
-          sendResponse({ success: true });
+        getTabId().then(async (tabId) => {
+          await stateMachine.startTask(message.goal, tabId);
+          sendResponse({ success: true, tabId });
         });
         return true;
       }
