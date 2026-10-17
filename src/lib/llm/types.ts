@@ -9,7 +9,9 @@ export type ActionType =
   | 'press'
   | 'scroll'
   | 'wait'
-  | 'request_vision_crop';
+  | 'request_vision_crop'
+  | 'navigate'
+  | 'go_back';
 
 export interface MacroAction {
   type: ActionType;

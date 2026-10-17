@@ -48,4 +48,5 @@ export type ExtensionMessage =
   | { type: 'DISTILL_VIEWPORT' }
   | { type: 'EXECUTE_MACRO'; actions: MacroAction[] }
   | { type: 'GET_DELTA' }
-  | { type: 'REQUEST_VISION_CROP'; targetId: number };
+  | { type: 'REQUEST_VISION_CROP'; targetId: number }
+  | { type: 'PING' };

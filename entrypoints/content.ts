@@ -7,7 +7,7 @@ import { ExtensionMessage } from '../src/lib/agent/types';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
-  allFrames: true,
+  allFrames: false,
   main() {
     console.log('[Vision AI] Content script active with 4-layer distillation engine.');
 
@@ -77,6 +77,11 @@ export default defineContentScript({
           captureTargetVisionCrop(message.targetId, globalElementRegistry)
             .then((res) => sendResponse(res))
             .catch((err) => sendResponse({ error: String(err) }));
+          return true;
+        }
+
+        case 'PING': {
+          sendResponse({ ok: true, url: window.location.href });
           return true;
         }
 

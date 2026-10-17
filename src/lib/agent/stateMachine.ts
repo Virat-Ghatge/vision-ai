@@ -6,7 +6,7 @@ import {
 import { LLMRouter } from '../llm/router';
 import { ByteStableContextManager } from '../llm/contextManager';
 import { MacroAction } from '../llm/types';
-import { ActionTrace, MacroExecutionResult } from '../executor/macroExecutor';
+import { ActionTrace, MacroExecutionResult, AbortReason } from '../executor/macroExecutor';
 
 const DEFAULT_MAX_STEPS = 25;
 const STORAGE_SESSION_KEY = 'orbit_agent_session_state';
@@ -226,7 +226,9 @@ export class AgentStateMachine {
       // Step 1 Action-First Guardrail: Prevent chatbot refusals or disclaimers on action goals
       const isInfo = this.isPureInformationQuery(this.state.goal);
       const isRefusal = this.hasRefusalIndication(plan.thought);
-      const isFinishedWithAnswer = isInfo && this.hasCompletionIndication(plan.thought) && !isRefusal;
+      const isFinishedWithAnswer =
+        (isInfo && this.hasCompletionIndication(plan.thought) && !isRefusal) ||
+        (plan.complete === true && plan.thought.length > 20 && !isRefusal);
 
       if (this.state.stepNumber === 1 && plan.actions.length === 0 && !isFinishedWithAnswer) {
         console.warn(
@@ -354,9 +356,11 @@ export class AgentStateMachine {
       return;
     }
 
-    // Special check for Step 1 action goals: 0 actions on Step 1 is NOT completion unless answering an informational query
+    // Special check for Step 1 action goals: 0 actions on Step 1 is NOT completion unless answering an informational query or providing a detailed complete answer
     const isActionGoal = !this.isPureInformationQuery(this.state.goal);
-    if (this.state.stepNumber === 1 && actions.length === 0 && isActionGoal) {
+    const isInformationalAnswer =
+      isPlanComplete && this.state.currentThought.length > 20 && !this.hasRefusalIndication(this.state.currentThought);
+    if (this.state.stepNumber === 1 && actions.length === 0 && isActionGoal && !isInformationalAnswer) {
       shouldComplete = false;
     }
 
@@ -708,23 +712,90 @@ export class AgentStateMachine {
   }
 
   private async sendActionsToTab(tabId: number, actions: MacroAction[]): Promise<MacroExecutionResult> {
+    const executedTraces: ActionTrace[] = [];
+    const domActions: MacroAction[] = [];
+    let abortedEarly = false;
+    let abortReason: AbortReason | undefined;
+
+    // Handle top-level navigation actions before sending DOM actions to content script
+    for (let i = 0; i < actions.length; i++) {
+      const act = actions[i];
+      if (act.type === 'navigate') {
+        if (typeof chrome !== 'undefined' && chrome.tabs?.update && tabId > 0 && act.value) {
+          try {
+            await chrome.tabs.update(tabId, { url: act.value });
+            const settledUrl = await this.waitForTabSettled(tabId, '');
+            if (settledUrl) this.lastKnownUrl = settledUrl;
+            executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+          } catch (navErr) {
+            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(navErr) });
+            abortedEarly = true;
+            abortReason = 'action_failed';
+            break;
+          }
+        } else {
+          executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+        }
+        if (i < actions.length - 1) {
+          abortedEarly = true;
+          abortReason = 'url_changed';
+          break;
+        }
+      } else if (act.type === 'go_back') {
+        if (typeof chrome !== 'undefined' && chrome.tabs?.goBack && tabId > 0) {
+          try {
+            await chrome.tabs.goBack(tabId);
+            const settledUrl = await this.waitForTabSettled(tabId, '');
+            if (settledUrl) this.lastKnownUrl = settledUrl;
+            executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+          } catch (backErr) {
+            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(backErr) });
+            abortedEarly = true;
+            abortReason = 'action_failed';
+            break;
+          }
+        } else {
+          executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+        }
+        if (i < actions.length - 1) {
+          abortedEarly = true;
+          abortReason = 'url_changed';
+          break;
+        }
+      } else {
+        domActions.push(act);
+      }
+    }
+
+    if (domActions.length === 0 || abortedEarly) {
+      return {
+        totalActions: actions.length,
+        executedActions: executedTraces.filter((t) => t.success).length,
+        abortedEarly,
+        abortReason,
+        executedTraces,
+      };
+    }
+
     if (typeof chrome !== 'undefined' && tabId > 0) {
       if (chrome.tabs?.sendMessage) {
         try {
           const res = (await chrome.tabs.sendMessage(tabId, {
             type: 'EXECUTE_MACRO',
-            actions,
+            actions: domActions,
           })) as Partial<MacroExecutionResult> | undefined;
 
           if (res) {
+            const domTraces = Array.isArray(res.executedTraces)
+              ? res.executedTraces
+              : domActions.map((act) => ({ action: act, timestamp: Date.now(), success: true }));
+            const combinedTraces = [...executedTraces, ...domTraces];
             return {
-              totalActions: res.totalActions ?? actions.length,
-              executedActions: res.executedActions ?? actions.length,
+              totalActions: actions.length,
+              executedActions: combinedTraces.filter((t) => t.success).length,
               abortedEarly: res.abortedEarly ?? false,
               abortReason: res.abortReason,
-              executedTraces: Array.isArray(res.executedTraces)
-                ? res.executedTraces
-                : actions.map((act) => ({ action: act, timestamp: Date.now(), success: true })),
+              executedTraces: combinedTraces,
             };
           }
         } catch (err) {
@@ -829,19 +900,21 @@ export class AgentStateMachine {
                 executedTraces: traces,
               };
             },
-            args: [actions],
+            args: [domActions],
           });
 
           if (results && results[0]?.result) {
             const rawRes = results[0].result as MacroExecutionResult;
+            const domTraces = Array.isArray(rawRes.executedTraces)
+              ? rawRes.executedTraces
+              : domActions.map((act) => ({ action: act, timestamp: Date.now(), success: true }));
+            const combinedTraces = [...executedTraces, ...domTraces];
             return {
-              totalActions: rawRes.totalActions ?? actions.length,
-              executedActions: rawRes.executedActions ?? actions.length,
+              totalActions: actions.length,
+              executedActions: combinedTraces.filter((t) => t.success).length,
               abortedEarly: rawRes.abortedEarly ?? false,
               abortReason: rawRes.abortReason,
-              executedTraces: Array.isArray(rawRes.executedTraces)
-                ? rawRes.executedTraces
-                : actions.map((act) => ({ action: act, timestamp: Date.now(), success: true })),
+              executedTraces: combinedTraces,
             };
           }
         } catch (execErr) {
@@ -850,15 +923,19 @@ export class AgentStateMachine {
       }
     }
 
-    return {
-      totalActions: actions.length,
-      executedActions: actions.length,
-      abortedEarly: false,
-      executedTraces: actions.map((act) => ({
+    const combinedTraces = [
+      ...executedTraces,
+      ...domActions.map((act) => ({
         action: act,
         timestamp: Date.now(),
         success: true,
       })),
+    ];
+    return {
+      totalActions: actions.length,
+      executedActions: combinedTraces.filter((t) => t.success).length,
+      abortedEarly: false,
+      executedTraces: combinedTraces,
     };
   }
 }

@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M5.2`
+- **Task ID:** `M6.4`
 - **Status:** `[x]` Completed
-- **Completed At:** 2026-10-15T14:59:00+05:30
-- **Goal:** Run full WXT build and verify UI rendering and DOM distillation in Antigravity's built-in Chrome browser, generating final Verification Artifacts.
+- **Completed At:** 2026-10-17T12:09:00+05:30
+- **Goal:** Add `navigate` & `go_back` Actions + OpenRouter HTTP 400 Retry.
 
 ---
 
@@ -38,6 +38,12 @@
 - [x] `M5.1` Build React Side Panel UI: Chat/Task stream, Provider API Key Vault, Tier Router selector, Live Token Savings Counter (Cached vs. Uncached tokens), and Saved Skills drawer.
 - [x] `M5.2` Run full WXT build and verify UI rendering and DOM distillation in Antigravity's built-in Chrome browser, generating final Verification Artifacts.
 
+### Milestone 6: Wire Runtime Entrypoints & Fix MV3 Bugs
+- [x] `M6.1` Fix `entrypoints/content.ts` Frame Race (`allFrames: false` + `PING` case) & Add Visual Spotlight (`highlightTarget` + `selector`/`elementText` in `ActionTrace`).
+- [x] `M6.2` Fix Service Worker Cold-Start Race & Wire Hooks in `entrypoints/background.ts` (`syncStorageToRouter`, `checkSkillCache`, `isDestructiveAction`, `compileTraceToSkill`).
+- [x] `M6.3` Fix DOM Distiller Slot Exhaustion & Add Page Text Summary (`src/lib/dom/distiller.ts`).
+- [x] `M6.4` Add `navigate` & `go_back` Actions + OpenRouter HTTP 400 Retry.
+
 ---
 
 ## Verification Log & Metrics
@@ -61,9 +67,13 @@
 | 16 | M5.2 | PASS (0 errors) | PASS (27 tests) | PASS (340.95 kB bundle) | PASS (Live Browser) | Live Chrome Browser subagent verified Sidepanel UI, modal controls, and artifacts |
 | 17 | M5.3 | PASS (0 errors) | PASS (30 tests) | PASS (357.37 kB bundle) | PASS (UI & Routing) | Added per-provider model selectors (Dassi AI style) and seamless rate-limit failover |
 | 18 | M5.4 | PASS (0 errors) | PASS (33 tests) | PASS (369.49 kB bundle) | PASS (Groq & Gemini) | Implemented live model discovery, search, refresh, and auto-failover for Groq and Gemini |
+| 19 | M6.1 | PASS (0 errors) | PASS (46 tests) | PASS (396.36 kB bundle) | N/A (Content & Highlight) | Set allFrames: false, added PING handler, highlightTarget spotlight, and trace selector |
+| 20 | M6.2 | PASS (0 errors) | PASS (47 tests) | PASS (404.17 kB bundle) | N/A (Background Hooks) | Wired syncStorageToRouter, checkSkillCache, isDestructiveAction, and compileTraceToSkill |
+| 21 | M6.3 | PASS (0 errors) | PASS (47 tests) | PASS (405.09 kB bundle) | N/A (Distiller Slots) | Removed container tags from LANDMARK_TAGS, fixed pointer check, maxItems: 60, added summary |
+| 22 | M6.4 | PASS (0 errors) | PASS (52 tests) | PASS (407.03 kB bundle) | N/A (Actions & Retry) | Added navigate and go_back actions, relaxed Step 1 guardrail, and OpenRouter HTTP 400 retry |
 
 ---
 
-## Termination Status
-**ALL MILESTONES M0 THROUGH M5 COMPLETED AND DETERMINISTICALLY VERIFIED.**
-All verification gates (A, B, C, D) are PASS.
+## Current Status
+Milestone 6 is fully completed and verified!
+All verification gates (A: Typecheck, B: Vitest 52/52 tests, C: WXT Build 407.03 kB) are PASS.

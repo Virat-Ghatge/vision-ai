@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { classifyActionSafety } from '../src/lib/safety/interceptor';
-import { SkillStore, SiteSkill } from '../src/lib/skills/skillStore';
+import { SkillStore, SiteSkill, compileTraceToSkill } from '../src/lib/skills/skillStore';
 import { AgentStateMachine } from '../src/lib/agent/stateMachine';
 import { LLMRouter } from '../src/lib/llm/router';
 
@@ -135,6 +135,30 @@ describe('M4: Skills Cache & Human-in-the-Loop Safety Interceptor Suite', () => 
       await stateMachine.approvePendingAction(false);
       expect(stateMachine.getState().status).toBe('paused');
       expect(stateMachine.getState().requiresApproval).toBe(false);
+    });
+
+    it('compileTraceToSkill preserves selector on compiled steps', async () => {
+      const traces = [
+        {
+          action: { type: 'click' as const, id: 1 },
+          timestamp: Date.now(),
+          success: true,
+          selector: 'button#submit-btn',
+          elementText: 'Submit',
+        },
+        {
+          action: { type: 'fill' as const, id: 2, value: 'test query' },
+          timestamp: Date.now(),
+          success: true,
+          selector: 'input[name="q"]',
+          elementText: '',
+        },
+      ];
+
+      const skill = await compileTraceToSkill('https://example.com/search', 'search query', traces);
+      expect(skill.steps.length).toBe(2);
+      expect(skill.steps[0].selector).toBe('button#submit-btn');
+      expect(skill.steps[1].selector).toBe('input[name="q"]');
     });
   });
 });

@@ -62,7 +62,7 @@ export class OpenRouterAdapter implements LLMProvider {
       };
     });
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    let response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -80,9 +80,31 @@ export class OpenRouterAdapter implements LLMProvider {
       signal: options?.signal,
     });
 
+    if (response.status === 400) {
+      // Some free models on OpenRouter return HTTP 400 when response_format is passed.
+      // Retry once without response_format before failing.
+      response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+          'HTTP-Referer': 'https://visionai.dev',
+          'X-Title': 'Vision AI Chrome Extension',
+        },
+        body: JSON.stringify({
+          model,
+          messages: formattedMessages,
+          temperature: options?.temperature ?? 0.1,
+          max_tokens: options?.maxTokens ?? 1024,
+        }),
+        signal: options?.signal,
+      });
+    }
+
     if (!response.ok) {
       const errText = await response.text();
       const isLimitOrUnavailable =
+        response.status === 400 ||
         response.status === 429 ||
         response.status === 402 ||
         response.status === 404 ||

@@ -100,7 +100,7 @@ export const INTERACTIVE_ROLES = new Set([
   'menu',
 ]);
 
-const LANDMARK_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'NAV', 'FORM', 'DIALOG', 'HEADER', 'MAIN']);
+const LANDMARK_TAGS = new Set(['H1', 'H2', 'H3']);
 
 /**
  * Checks if an element is visible in the current viewport.
@@ -198,7 +198,13 @@ export function isCandidateNode(el: HTMLElement, win: Window = window): boolean 
     try {
       const curStyle = win.getComputedStyle(el);
       if (curStyle && curStyle.cursor === 'pointer') {
-        return true;
+        if (
+          el.children.length <= 2 &&
+          !el.closest('a, button, [role="button"], [role="link"]') &&
+          (!el.parentElement || win.getComputedStyle(el.parentElement).cursor !== 'pointer')
+        ) {
+          return true;
+        }
       }
     } catch {}
   }
@@ -269,7 +275,12 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
 
   // Get direct text content
   let text = '';
-  if (tag !== 'input') {
+  if (tag === 'select') {
+    const sel = el as HTMLSelectElement;
+    text = sel.selectedIndex >= 0 && sel.options?.[sel.selectedIndex]
+      ? truncateText(sel.options[sel.selectedIndex].text || '', 20)
+      : '';
+  } else if (tag !== 'input') {
     text = truncateText(el.textContent || '', 30);
   }
 
@@ -300,7 +311,7 @@ export function distillViewport(
   win: Window = window,
   options?: DistillOptions
 ): DistillResult {
-  const maxItems = options?.maxItems ?? 40;
+  const maxItems = options?.maxItems ?? 60;
   const lines: string[] = [];
   let totalWalked = 0;
   let interactiveCount = 0;
@@ -323,6 +334,8 @@ export function distillViewport(
   const elements = walker.querySelectorAll<HTMLElement>('*');
   totalWalked = elements.length;
 
+  let currentChars = lines.reduce((acc, l) => acc + l.length + 1, 0);
+
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i];
 
@@ -335,13 +348,15 @@ export function distillViewport(
       continue;
     }
 
-    if (interactiveCount >= maxItems) {
+    if (interactiveCount >= maxItems || Math.ceil(currentChars / 3.8) >= 680) {
       lines.push(`... [${totalWalked - interactiveCount} additional items outside viewport budget]`);
       break;
     }
 
     const id = registry.register(el);
-    lines.push(formatElementDescriptor(el, id));
+    const desc = formatElementDescriptor(el, id);
+    lines.push(desc);
+    currentChars += desc.length + 1;
     interactiveCount++;
   }
 
@@ -357,8 +372,11 @@ export function distillViewport(
             const fEl = frameEls[j];
             if (!isCandidateNode(fEl, win)) continue;
             if (!isElementVisible(fEl, win)) continue;
+            if (interactiveCount >= maxItems || Math.ceil(currentChars / 3.8) >= 680) break;
             const id = registry.register(fEl);
-            lines.push(formatElementDescriptor(fEl, id));
+            const desc = formatElementDescriptor(fEl, id);
+            lines.push(desc);
+            currentChars += desc.length + 1;
             interactiveCount++;
           }
         }
@@ -368,8 +386,34 @@ export function distillViewport(
     }
   } catch {}
 
-  // If no interactive elements found, provide a text snippet so Vision AI is never blind
-  if (interactiveCount === 0) {
+  // Collect visible text snippets from h1, h2, h3, p, article, [class*="price"]
+  try {
+    const textEls = walker.querySelectorAll<HTMLElement>('h1, h2, h3, p, article, [class*="price"]');
+    const snippets: string[] = [];
+    let totalChars = 0;
+    for (let i = 0; i < textEls.length && totalChars < 350; i++) {
+      const tEl = textEls[i];
+      if (!isElementVisible(tEl, win)) continue;
+      const txt = (tEl.textContent || '').replace(/\s+/g, ' ').trim();
+      if (txt.length > 5 && !snippets.some((s) => s.includes(txt) || txt.includes(s))) {
+        const piece = txt.slice(0, 100);
+        snippets.push(piece);
+        totalChars += piece.length;
+      }
+    }
+    if (snippets.length > 0) {
+      const estimatedTokens = Math.ceil(currentChars / 3.8);
+      if (estimatedTokens < 720) {
+        const allowedChars = Math.min(350, Math.floor((770 - estimatedTokens) * 3.8));
+        if (allowedChars > 20) {
+          lines.push(`PAGE SUMMARY: ${snippets.join(' | ')}`.slice(0, allowedChars));
+        }
+      }
+    }
+  } catch {}
+
+  // If no interactive elements found and no summary, provide a text snippet so Vision AI is never blind
+  if (interactiveCount === 0 && !lines.some((l) => l.startsWith('PAGE SUMMARY:'))) {
     const textSnippet = (walker.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 300);
     if (textSnippet) {
       lines.push(`(No interactive elements in viewport. Page text summary: "${textSnippet}")`);

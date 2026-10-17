@@ -2,6 +2,8 @@ import { defineBackground } from 'wxt/sandbox';
 import { LLMRouter } from '../src/lib/llm/router';
 import { AgentStateMachine } from '../src/lib/agent/stateMachine';
 import { ExtensionMessage } from '../src/lib/agent/types';
+import { globalSkillStore, compileTraceToSkill } from '../src/lib/skills/skillStore';
+import { classifyActionSafety } from '../src/lib/safety/interceptor';
 
 export default defineBackground(() => {
   console.log('[Vision AI] Service Worker background loop initialized.');
@@ -51,15 +53,23 @@ export default defineBackground(() => {
     apiKeys: {},
   });
 
-  // Load stored API keys from chrome.storage.local
-  chrome.storage.local.get(['apiKeys', 'modelRoutingConfig']).then((data) => {
-    if (data.apiKeys) {
-      router.updateConfig({ apiKeys: data.apiKeys });
+  // Synchronize stored API keys and routing configuration from chrome.storage.local
+  const syncStorageToRouter = async (): Promise<void> => {
+    try {
+      const data = await chrome.storage.local.get(['apiKeys', 'modelRoutingConfig']);
+      if (data.apiKeys) {
+        router.updateConfig({ apiKeys: data.apiKeys });
+      }
+      if (data.modelRoutingConfig) {
+        router.updateConfig(data.modelRoutingConfig);
+      }
+    } catch (err) {
+      console.warn('[Vision AI] syncStorageToRouter error:', err);
     }
-    if (data.modelRoutingConfig) {
-      router.updateConfig(data.modelRoutingConfig);
-    }
-  });
+  };
+
+  // Initial load
+  syncStorageToRouter();
 
   // Keep live router in sync with any changes in ApiKeyVault / model preferences
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -74,11 +84,49 @@ export default defineBackground(() => {
   });
 
   const stateMachine = new AgentStateMachine(router, {
+    checkSkillCache: async (url, goal) => {
+      const skill = await globalSkillStore.findMatchingSkill(url, goal);
+      if (!skill) return { matched: false };
+      await globalSkillStore.recordSkillExecution(skill.id);
+      return {
+        matched: true,
+        actions: skill.steps.map((s) => ({
+          type: s.action,
+          value: s.value,
+          stop_if_url_changes: s.stop_if_url_changes,
+        })),
+      };
+    },
+    isDestructiveAction: (action, text) => {
+      const res = classifyActionSafety(action, text || '', '');
+      return {
+        destructive: res.isDestructive && res.severity !== 'low',
+        reason: res.reason,
+      };
+    },
     onStateChange: (state) => {
       // Broadcast state updates to open sidepanel UI
       chrome.runtime.sendMessage({ type: 'AGENT_STATE_UPDATED', state }).catch(() => {
         // Suppress errors when sidepanel is not open
       });
+
+      if (state.status === 'completed' && state.completedTraces.length >= 1) {
+        const tabId = state.tabId;
+        const recordSkill = (tabUrl: string) => {
+          compileTraceToSkill(tabUrl, state.goal, state.completedTraces, router).catch((err) => {
+            console.warn('[Vision AI] Failed to compile trace to skill:', err);
+          });
+        };
+
+        if (tabId && typeof chrome !== 'undefined' && chrome.tabs?.get) {
+          chrome.tabs
+            .get(tabId)
+            .then((tab) => recordSkill(tab?.url || 'https://example.com'))
+            .catch(() => recordSkill('https://example.com'));
+        } else {
+          recordSkill('https://example.com');
+        }
+      }
     },
   });
 
@@ -108,6 +156,7 @@ export default defineBackground(() => {
         };
 
         getTabId().then(async (tabId) => {
+          await syncStorageToRouter();
           await stateMachine.startTask(message.goal, tabId);
           sendResponse({ success: true, tabId });
         });
@@ -120,7 +169,9 @@ export default defineBackground(() => {
       }
 
       case 'RESUME_TASK': {
-        stateMachine.resume().then(() => sendResponse({ success: true }));
+        syncStorageToRouter()
+          .then(() => stateMachine.resume())
+          .then(() => sendResponse({ success: true }));
         return true;
       }
 

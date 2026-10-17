@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { parseAgentPlanResponse } from '../src/lib/llm/parser';
 import { AgentStateMachine } from '../src/lib/agent/stateMachine';
 import { LLMRouter } from '../src/lib/llm/router';
+import { OpenRouterAdapter } from '../src/lib/llm/adapters/openrouter';
+import { UsageLimitError } from '../src/lib/llm/types';
 
 describe('Vision AI Smooth Agent Loop & Resilient Parser Suite', () => {
   describe('Resilient Plan Parser', () => {
@@ -98,6 +100,22 @@ describe('Vision AI Smooth Agent Loop & Resilient Parser Suite', () => {
       expect(plan.thought).toBe('All checks passed');
       expect(plan.actions).toEqual([{ type: 'scroll', value: 'down' }]);
       expect(plan.complete).toBe(false);
+    });
+
+    it('parses navigate and go_back actions', () => {
+      const json = JSON.stringify({
+        thought: 'Navigating to website and returning',
+        actions: [
+          { type: 'navigate', value: 'https://github.com' },
+          { type: 'go_back' },
+        ],
+        complete: false,
+      });
+      const plan = parseAgentPlanResponse(json);
+      expect(plan.actions).toEqual([
+        { type: 'navigate', value: 'https://github.com' },
+        { type: 'go_back' },
+      ]);
     });
   });
 
@@ -209,6 +227,122 @@ describe('Vision AI Smooth Agent Loop & Resilient Parser Suite', () => {
 
       const state = stateMachine.getState();
       expect(state.status).not.toBe('completed');
+    });
+
+    it('allows Step 1 completion when plan.complete is true with informative thought and no refusal', async () => {
+      const router = new LLMRouter({ apiKeys: { groq: 'test-key' } });
+
+      vi.spyOn(router, 'executeStep').mockResolvedValue({
+        response: {
+          thought: 'The current page displays the project documentation overview and installation guide.',
+          actions: [],
+          complete: true,
+        },
+        activeTier: 1,
+        provider: 'groq',
+      });
+
+      const stateMachine = new AgentStateMachine(router);
+      await stateMachine.startTask('Summarize this documentation page', 1);
+
+      const state = stateMachine.getState();
+      expect(state.status).toBe('completed');
+      expect(state.currentThought).toContain('project documentation overview');
+    });
+
+    it('executes navigate and go_back actions and records traces', async () => {
+      const router = new LLMRouter({ apiKeys: { groq: 'test-key' } });
+
+      vi.spyOn(router, 'executeStep').mockResolvedValue({
+        response: {
+          thought: 'Navigating to external docs',
+          actions: [
+            { type: 'navigate', value: 'https://github.com/trending' },
+            { type: 'go_back' },
+          ],
+          complete: true,
+        },
+        activeTier: 1,
+        provider: 'groq',
+      });
+
+      const updateSpy = vi.fn().mockResolvedValue({});
+      const goBackSpy = vi.fn().mockResolvedValue({});
+      (globalThis as any).chrome = {
+        ...(globalThis as any).chrome,
+        tabs: {
+          query: vi.fn().mockResolvedValue([{ id: 1 }]),
+          get: vi.fn().mockResolvedValue({ id: 1, url: 'https://github.com/trending', status: 'complete' }),
+          update: updateSpy,
+          goBack: goBackSpy,
+          sendMessage: vi.fn().mockResolvedValue({ text: 'PAGE: GitHub Trending' }),
+        },
+      };
+
+      const stateMachine = new AgentStateMachine(router);
+      await stateMachine.startTask('Check trending repos', 1);
+
+      expect(updateSpy).toHaveBeenCalledWith(1, { url: 'https://github.com/trending' });
+      const state = stateMachine.getState();
+      expect(state.completedTraces.some((t) => t.action.type === 'navigate')).toBe(true);
+    });
+  });
+
+  describe('OpenRouter HTTP 400 Retry & Resilience', () => {
+    it('retries once without response_format on HTTP 400 and succeeds if retry returns 200', async () => {
+      const adapter = new OpenRouterAdapter('test-key', 'free/model');
+      let callCount = 0;
+      let secondCallHadResponseFormat = true;
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init: any) => {
+        callCount++;
+        const parsedBody = JSON.parse(init.body);
+        if (callCount === 1) {
+          expect(parsedBody.response_format).toBeDefined();
+          return {
+            ok: false,
+            status: 400,
+            text: async () => 'Provider does not support response_format',
+          } as Response;
+        } else {
+          secondCallHadResponseFormat = parsedBody.response_format !== undefined;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      thought: 'Successfully retrieved after 400 retry',
+                      actions: [],
+                      complete: true,
+                    }),
+                  },
+                },
+              ],
+            }),
+          } as Response;
+        }
+      });
+
+      const res = await adapter.chat([{ role: 'user', content: 'test' }]);
+      expect(callCount).toBe(2);
+      expect(secondCallHadResponseFormat).toBe(false);
+      expect(res.thought).toBe('Successfully retrieved after 400 retry');
+      expect(res.complete).toBe(true);
+    });
+
+    it('throws UsageLimitError if retry also fails with HTTP 400', async () => {
+      const adapter = new OpenRouterAdapter('test-key', 'broken/model');
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: async () => 'Invalid model request or unsupported parameter',
+      } as Response);
+
+      await expect(adapter.chat([{ role: 'user', content: 'test' }])).rejects.toThrow(UsageLimitError);
     });
   });
 });

@@ -169,6 +169,7 @@ Respond with JSON ONLY:
         for (const act of response.actions) {
           steps.push({
             action: act.type as CompiledSkillStep['action'],
+            selector: (act as any).selector,
             value: act.value,
             stop_if_url_changes: act.stop_if_url_changes,
           });
@@ -184,6 +185,7 @@ Respond with JSON ONLY:
     for (const trace of traces) {
       steps.push({
         action: trace.action.type as CompiledSkillStep['action'],
+        selector: trace.selector,
         value: trace.action.value,
         stop_if_url_changes: trace.action.stop_if_url_changes,
       });

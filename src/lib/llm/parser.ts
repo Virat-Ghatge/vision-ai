@@ -8,6 +8,8 @@ const VALID_ACTION_TYPES: ReadonlySet<ActionType> = new Set([
   'scroll',
   'wait',
   'request_vision_crop',
+  'navigate',
+  'go_back',
 ]);
 
 /**
@@ -21,8 +23,8 @@ function cleanJsonString(str: string): string {
     // Normalize unicode smart quotes to ASCII
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2018\u2019]/g, "'")
-    // Remove single-line comments // ...
-    .replace(/\/\/[^\n\r]*/g, '')
+    // Remove single-line comments // ... without breaking URLs (e.g. http://, https://)
+    .replace(/(?<!:)\/\/[^\n\r]*/g, '')
     // Remove trailing commas before } or ]
     .replace(/,\s*([}\]])/g, '$1')
     .trim();
@@ -62,18 +64,22 @@ export function parseAgentPlanResponse(rawText: string): AgentPlanResponse {
     };
   }
 
-  // Isolate and clean substring
+  // Isolate substring
   const isolated = jsonCandidate.substring(startIdx, endIdx + 1);
-  const cleaned = cleanJsonString(isolated);
 
   try {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(cleaned);
+      parsed = JSON.parse(isolated);
     } catch {
-      // Secondary attempt: try repairing unclosed braces if truncated
-      const repaired = cleaned.endsWith('}') ? cleaned : cleaned + '}';
-      parsed = JSON.parse(cleanJsonString(repaired));
+      const cleaned = cleanJsonString(isolated);
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        // Secondary attempt: try repairing unclosed braces if truncated
+        const repaired = cleaned.endsWith('}') ? cleaned : cleaned + '}';
+        parsed = JSON.parse(cleanJsonString(repaired));
+      }
     }
 
     if (typeof parsed !== 'object' || parsed === null) {

@@ -15,6 +15,59 @@ export interface ActionTrace {
   timestamp: number;
   success: boolean;
   error?: string;
+  selector?: string;
+  elementText?: string;
+}
+
+export function highlightTarget(el: HTMLElement): void {
+  if (!el || typeof el.style === 'undefined') return;
+  const originalOutline = el.style.outline;
+  const originalOffset = el.style.outlineOffset;
+  el.style.outline = '2px solid #39d353';
+  el.style.outlineOffset = '2px';
+  setTimeout(() => {
+    try {
+      el.style.outline = originalOutline;
+      el.style.outlineOffset = originalOffset;
+    } catch {}
+  }, 350);
+}
+
+export function getElementSelector(el: HTMLElement): string {
+  if (el.id) {
+    return `#${CSS?.escape ? CSS.escape(el.id) : el.id}`;
+  }
+  const role = el.getAttribute('role');
+  if (role) {
+    const name = el.getAttribute('aria-label') || el.getAttribute('name');
+    if (name) {
+      const esc = CSS?.escape ? CSS.escape(name) : name;
+      return `[role="${role}"][aria-label="${esc}"]`;
+    }
+    return `[role="${role}"]`;
+  }
+  const name = el.getAttribute('name');
+  if (name) {
+    const esc = CSS?.escape ? CSS.escape(name) : name;
+    return `${el.tagName.toLowerCase()}[name="${esc}"]`;
+  }
+  const ariaLabel = el.getAttribute('aria-label');
+  if (ariaLabel) {
+    const esc = CSS?.escape ? CSS.escape(ariaLabel) : ariaLabel;
+    return `${el.tagName.toLowerCase()}[aria-label="${esc}"]`;
+  }
+  const testId = el.getAttribute('data-testid') || el.getAttribute('data-test');
+  if (testId) {
+    const esc = CSS?.escape ? CSS.escape(testId) : testId;
+    return `[data-testid="${esc}"]`;
+  }
+  if (el.className && typeof el.className === 'string') {
+    const classes = el.className.trim().split(/\s+/).filter((c) => !c.includes(':') && !c.includes('/'));
+    if (classes.length > 0) {
+      return `${el.tagName.toLowerCase()}.${classes.slice(0, 2).map((c) => (CSS?.escape ? CSS.escape(c) : c)).join('.')}`;
+    }
+  }
+  return el.tagName.toLowerCase();
 }
 
 export interface MacroExecutionResult {
@@ -124,6 +177,13 @@ export class MacroBatchExecutor {
         lastTargetEl = targetEl;
       }
 
+      let selector: string | undefined;
+      let elementText: string | undefined;
+      if (targetEl) {
+        selector = getElementSelector(targetEl);
+        elementText = (targetEl.innerText || targetEl.textContent || '').trim().slice(0, 100);
+      }
+
       // Execute atomic action
       try {
         await this.executeSingleAction(action, targetEl, lastTargetEl);
@@ -131,6 +191,8 @@ export class MacroBatchExecutor {
           action,
           timestamp: Date.now(),
           success: true,
+          selector,
+          elementText,
         });
       } catch (err) {
         executedTraces.push({
@@ -138,6 +200,8 @@ export class MacroBatchExecutor {
           timestamp: Date.now(),
           success: false,
           error: err instanceof Error ? err.message : String(err),
+          selector,
+          elementText,
         });
 
         return {
@@ -173,6 +237,7 @@ export class MacroBatchExecutor {
     switch (action.type) {
       case 'click': {
         if (targetEl) {
+          highlightTarget(targetEl);
           try {
             targetEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
           } catch {}
@@ -194,6 +259,7 @@ export class MacroBatchExecutor {
       case 'fill': {
         const val = action.value ?? '';
         if (targetEl) {
+          highlightTarget(targetEl);
           try {
             targetEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
           } catch {}
@@ -227,6 +293,9 @@ export class MacroBatchExecutor {
       }
 
       case 'select': {
+        if (targetEl) {
+          highlightTarget(targetEl);
+        }
         if (targetEl instanceof HTMLSelectElement) {
           targetEl.value = action.value ?? '';
           targetEl.dispatchEvent(new Event('change', { bubbles: true }));

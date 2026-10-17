@@ -26,6 +26,8 @@ CORE OPERATIONAL MANDATES:
 - scroll: { type: "scroll", value: "up"|"down" }
 - wait: { type: "wait", value: "500" }
 - request_vision_crop: { type: "request_vision_crop", id: number }
+- navigate: { type: "navigate", value: "https://..." }
+- go_back: { type: "go_back" }
 
 3. GUIDELINES:
 - Macro-Batching: You can batch sequential actions together in one turn (e.g. click an accordion [id] or fill an input [id] and press Enter).
