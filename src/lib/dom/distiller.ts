@@ -73,6 +73,7 @@ const INTERACTIVE_TAGS = new Set([
   'SUMMARY',
   'DETAILS',
   'LABEL',
+  'VIDEO',
 ]);
 
 export const INTERACTIVE_ROLES = new Set([
@@ -103,10 +104,37 @@ export const INTERACTIVE_ROLES = new Set([
 const LANDMARK_TAGS = new Set(['H1', 'H2', 'H3']);
 
 /**
+ * Identifies high-priority LMS (Coursera / Cisco NetAcad / Canvas) action controls:
+ * "Mark as complete", "Next", "Continue", "Resume", "Start", "Play", etc.
+ */
+export function isHighPriorityLMSAction(el: HTMLElement): boolean {
+  const tagName = el.tagName.toUpperCase();
+  if (tagName === 'VIDEO') return true;
+
+  const candidateTag =
+    ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(tagName) ||
+    el.getAttribute('role') === 'button' ||
+    el.getAttribute('role') === 'link' ||
+    el.getAttribute('role') === 'checkbox';
+
+  if (!candidateTag) return false;
+
+  const lmsPattern =
+    /\b(mark as complete|complete|next|continue|resume|start|launch|submit|play|study material|lecture|video|module|lesson)\b/i;
+  const text = el.textContent || '';
+  const aria = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || '';
+  const title = el.getAttribute('title') || '';
+  const value = (el as HTMLInputElement).value || '';
+
+  return lmsPattern.test(text) || lmsPattern.test(aria) || lmsPattern.test(title) || lmsPattern.test(value);
+}
+
+/**
  * Checks if an element is visible in the current viewport.
  * Uses native checkVisibility (Chrome 105+) with fallback for fast, low-overhead evaluation.
+ * If allowBelowFold is true (for high-priority LMS controls), does not cutoff elements beyond vh + 50.
  */
-export function isElementVisible(el: HTMLElement, win: Window = window): boolean {
+export function isElementVisible(el: HTMLElement, win: Window = window, allowBelowFold = false): boolean {
   if (!el.isConnected) return false;
   if (el.hasAttribute('hidden') || el.closest?.('[hidden]')) return false;
 
@@ -133,7 +161,12 @@ export function isElementVisible(el: HTMLElement, win: Window = window): boolean
           return false;
         }
       }
-      cur = cur.parentElement;
+      // Traverse up parent, or if in ShadowRoot, traverse up to the shadow host
+      if (!cur.parentElement && (cur.getRootNode?.() as ShadowRoot)?.host) {
+        cur = (cur.getRootNode() as ShadowRoot).host as HTMLElement;
+      } else {
+        cur = cur.parentElement;
+      }
       depth++;
     }
   }
@@ -145,7 +178,7 @@ export function isElementVisible(el: HTMLElement, win: Window = window): boolean
 
     // In environments with non-zero dimensions, verify viewport bounding
     if (rect.width > 0 || rect.height > 0) {
-      if (rect.bottom < -50 || rect.top > vh + 50 || rect.right < -50 || rect.left > vw + 50) {
+      if (rect.bottom < -50 || (!allowBelowFold && rect.top > vh + 50) || rect.right < -50 || rect.left > vw + 50) {
         return false;
       }
     }
@@ -222,10 +255,76 @@ export function isCandidateNode(el: HTMLElement, win: Window = window): boolean 
     (el.textContent || '').trim().length > 0 &&
     (el.textContent || '').trim().length < 120
   ) {
-    return true;
+    if (
+      !el.querySelector?.('a, button, input, select, textarea, [role="button"], [role="link"], [role="checkbox"]') &&
+      !el.closest?.('a, button, [role="button"], [role="link"], [role="menuitem"], [role="tab"]')
+    ) {
+      return true;
+    }
   }
 
   return false;
+}
+
+/**
+ * Recursively collects all HTML elements in pre-order document order, traversing into
+ * open ShadowRoot trees (essential for Web Components on LMS / NetAcad / Adapt Learning player)
+ * and accessible same-origin iframe contentDocuments.
+ */
+export function collectAllElementsDeep(root: Document | HTMLElement | ShadowRoot): HTMLElement[] {
+  const result: HTMLElement[] = [];
+
+  function walk(node: Node | ShadowRoot) {
+    if (node instanceof HTMLElement) {
+      result.push(node);
+
+      if (node.shadowRoot) {
+        const shadowChildren = node.shadowRoot.children;
+        if (shadowChildren) {
+          for (let i = 0; i < shadowChildren.length; i++) {
+            const sc = shadowChildren[i];
+            if (sc instanceof HTMLElement) {
+              walk(sc);
+            }
+          }
+        }
+      }
+
+      if (node instanceof HTMLIFrameElement) {
+        try {
+          const frameDoc = node.contentDocument;
+          if (frameDoc && frameDoc.body) {
+            walk(frameDoc.body);
+          }
+        } catch {}
+      }
+    }
+
+    const children = (node as any).children || node.childNodes;
+    if (children) {
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (child instanceof HTMLElement) {
+          walk(child);
+        }
+      }
+    }
+  }
+
+  const startNode = root instanceof Document ? root.body : root;
+  if (startNode) {
+    const children = (startNode as any).children || startNode.childNodes;
+    if (children) {
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (child instanceof HTMLElement) {
+          walk(child);
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 function truncateText(str: string, maxLen = 40): string {
@@ -251,6 +350,15 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
   const ariaLabel = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby');
   if (ariaLabel) attrs.push(`label="${truncateText(ariaLabel, 25)}"`);
 
+  const title = el.getAttribute('title');
+  if (title) attrs.push(`title="${truncateText(title, 25)}"`);
+
+  const ariaExpanded = el.getAttribute('aria-expanded');
+  if (ariaExpanded !== null) attrs.push(`aria-expanded="${ariaExpanded}"`);
+
+  const ariaChecked = el.getAttribute('aria-checked');
+  if (ariaChecked !== null) attrs.push(`aria-checked="${ariaChecked}"`);
+
   const role = el.getAttribute('role');
   if (role && role !== tag) attrs.push(`role="${role}"`);
 
@@ -271,6 +379,16 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
     }
   }
 
+  if (tag === 'video') {
+    const video = el as HTMLVideoElement;
+    if (video.paused !== undefined) {
+      attrs.push(video.paused ? 'paused' : 'playing');
+    }
+    if (video.duration && isFinite(video.duration)) {
+      attrs.push(`duration="${Math.round(video.duration)}s"`);
+    }
+  }
+
   const attrStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
 
   // Get direct text content
@@ -280,7 +398,7 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
     text = sel.selectedIndex >= 0 && sel.options?.[sel.selectedIndex]
       ? truncateText(sel.options[sel.selectedIndex].text || '', 20)
       : '';
-  } else if (tag !== 'input') {
+  } else if (tag !== 'input' && tag !== 'video') {
     text = truncateText(el.textContent || '', 30);
   }
 
@@ -331,22 +449,43 @@ export function distillViewport(
     }
   }
 
-  const elements = walker.querySelectorAll<HTMLElement>('*');
+  const elements = collectAllElementsDeep(walker);
   totalWalked = elements.length;
 
-  let currentChars = lines.reduce((acc, l) => acc + l.length + 1, 0);
+  const priorityCandidates: HTMLElement[] = [];
+  const standardCandidates: HTMLElement[] = [];
 
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i];
 
     if (!isCandidateNode(el, win)) continue;
-    if (!isElementVisible(el, win)) continue;
+
+    const isPriority = isHighPriorityLMSAction(el);
+    if (!isElementVisible(el, win, isPriority)) continue;
 
     // Check if element has an interactive ancestor already capturing it
-    const isInsideButton = el.tagName !== 'BUTTON' && el.closest('button') !== null;
-    if (isInsideButton && !['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) {
+    const parentInteractive = el.closest?.('a, button, [role="button"], [role="link"], [role="tab"], [role="menuitem"]');
+    if (parentInteractive && parentInteractive !== el && !['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) {
       continue;
     }
+
+    if (isPriority) {
+      priorityCandidates.push(el);
+    } else {
+      standardCandidates.push(el);
+    }
+  }
+
+  // Reserve up to 20 slots for high-priority LMS controls so they are NEVER cut off by maxItems
+  const reservedPriority = priorityCandidates.slice(0, 20);
+  const remainingSlots = Math.max(0, maxItems - reservedPriority.length);
+  const reservedStandard = standardCandidates.slice(0, remainingSlots);
+
+  const finalCandidates = [...reservedPriority, ...reservedStandard];
+  let currentChars = lines.reduce((acc, l) => acc + l.length + 1, 0);
+
+  for (let i = 0; i < finalCandidates.length; i++) {
+    const el = finalCandidates[i];
 
     if (interactiveCount >= maxItems || Math.ceil(currentChars / 3.8) >= 680) {
       lines.push(`... [${totalWalked - interactiveCount} additional items outside viewport budget]`);
@@ -359,32 +498,6 @@ export function distillViewport(
     currentChars += desc.length + 1;
     interactiveCount++;
   }
-
-  // Traverse same-origin iframes (e.g. Cisco NetAcad curriculum viewer or embedded modules)
-  try {
-    const iframes = walker.querySelectorAll<HTMLIFrameElement>('iframe');
-    for (let f = 0; f < iframes.length && interactiveCount < maxItems; f++) {
-      try {
-        const frameDoc = iframes[f].contentDocument;
-        if (frameDoc && frameDoc.body) {
-          const frameEls = frameDoc.body.querySelectorAll<HTMLElement>('*');
-          for (let j = 0; j < frameEls.length && interactiveCount < maxItems; j++) {
-            const fEl = frameEls[j];
-            if (!isCandidateNode(fEl, win)) continue;
-            if (!isElementVisible(fEl, win)) continue;
-            if (interactiveCount >= maxItems || Math.ceil(currentChars / 3.8) >= 680) break;
-            const id = registry.register(fEl);
-            const desc = formatElementDescriptor(fEl, id);
-            lines.push(desc);
-            currentChars += desc.length + 1;
-            interactiveCount++;
-          }
-        }
-      } catch {
-        // Cross-origin iframes are handled via content script allFrames: true
-      }
-    }
-  } catch {}
 
   // Collect visible text snippets from h1, h2, h3, p, article, [class*="price"]
   try {

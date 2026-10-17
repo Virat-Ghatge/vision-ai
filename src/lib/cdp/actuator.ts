@@ -112,19 +112,43 @@ export class CDPActuator {
       }
     }
 
-    // Fallback to synthetic DOM events
+    // Fallback to synthetic DOM events with realistic pointer & mouse event sequence
     if (fallbackElement) {
       try {
-        fallbackElement.focus();
-        fallbackElement.dispatchEvent(
-          new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window })
-        );
-        fallbackElement.dispatchEvent(
-          new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window })
-        );
-        fallbackElement.dispatchEvent(
-          new MouseEvent('click', { bubbles: true, cancelable: true, view: window })
-        );
+        try {
+          fallbackElement.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+        } catch {}
+
+        const rect = fallbackElement.getBoundingClientRect
+          ? fallbackElement.getBoundingClientRect()
+          : { left: 0, top: 0, width: 0, height: 0 };
+        const clientX = Math.round((rect.left || 0) + (rect.width || 0) / 2);
+        const clientY = Math.round((rect.top || 0) + (rect.height || 0) / 2);
+
+        const win = typeof window !== 'undefined' ? window : undefined;
+        const PointerEventClass = typeof PointerEvent !== 'undefined' ? PointerEvent : MouseEvent;
+
+        const baseInit = {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          clientX,
+          clientY,
+          button: 0,
+          buttons: 1,
+          view: win,
+        };
+
+        fallbackElement.dispatchEvent(new PointerEventClass('pointerover', { ...baseInit, buttons: 0 }));
+        fallbackElement.dispatchEvent(new MouseEvent('mouseover', { ...baseInit, buttons: 0 }));
+        fallbackElement.dispatchEvent(new PointerEventClass('pointerdown', baseInit));
+        fallbackElement.dispatchEvent(new MouseEvent('mousedown', baseInit));
+        if (typeof fallbackElement.focus === 'function') fallbackElement.focus();
+        fallbackElement.dispatchEvent(new PointerEventClass('pointerup', { ...baseInit, buttons: 0 }));
+        fallbackElement.dispatchEvent(new MouseEvent('mouseup', { ...baseInit, buttons: 0 }));
+        fallbackElement.dispatchEvent(new MouseEvent('click', { ...baseInit, buttons: 0 }));
+        if (typeof fallbackElement.click === 'function') fallbackElement.click();
+
         return { success: true, method: 'synthetic' };
       } catch (err) {
         return {

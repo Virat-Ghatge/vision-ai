@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { AgentSessionState } from '../../src/lib/agent/types';
+import { AgentSessionState, TabSessionSummary } from '../../src/lib/agent/types';
 import { TokenTelemetryHUD } from './components/TokenTelemetryHUD';
 import { ApiKeyVault } from './components/ApiKeyVault';
 import { SkillsDrawer } from './components/SkillsDrawer';
 import { ApprovalModal } from './components/ApprovalModal';
 import { TaskStream } from './components/TaskStream';
+import { TabSelectorBar } from './components/TabSelectorBar';
 import { SiteSkill } from '../../src/lib/skills/skillStore';
 import { KeyRound, Sparkles, Orbit, Globe, RefreshCw, AlertTriangle } from 'lucide-react';
 
@@ -35,16 +36,57 @@ interface ActiveTabInfo {
 
 export default function App(): React.JSX.Element {
   const [state, setState] = useState<AgentSessionState>(INITIAL_STATE);
-  const [prompt, setPrompt] = useState('');
+  const [selectedTabId, setSelectedTabId] = useState<number>(0);
+  const [promptsByTab, setPromptsByTab] = useState<Record<number, string>>({});
+  const [tabSessions, setTabSessions] = useState<TabSessionSummary[]>([]);
   const [vaultOpen, setVaultOpen] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTabInfo>({});
+
+  const activePrompt = (selectedTabId > 0 ? promptsByTab[selectedTabId] : '') || '';
+
+  const handlePromptChange = (val: string) => {
+    if (selectedTabId > 0) {
+      setPromptsByTab((prev) => ({ ...prev, [selectedTabId]: val }));
+    }
+  };
+
+  const refreshTabSessions = () => {
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      try {
+        chrome.runtime.sendMessage({ type: 'LIST_TAB_SESSIONS' }, (res) => {
+          if (chrome.runtime.lastError) return;
+          if (res?.sessions && Array.isArray(res.sessions)) {
+            setTabSessions(res.sessions);
+          }
+        });
+      } catch (err) {
+        console.warn('[Vision AI] refreshTabSessions error:', err);
+      }
+    }
+  };
+
+  const fetchTabState = (tabId: number) => {
+    if (tabId <= 0) return;
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      try {
+        chrome.runtime.sendMessage({ type: 'GET_AGENT_STATE', tabId }, (res) => {
+          if (chrome.runtime.lastError) return;
+          if (res && typeof res === 'object') {
+            setState(res as AgentSessionState);
+          }
+        });
+      } catch (err) {
+        console.warn('[Vision AI] fetchTabState error:', err);
+      }
+    }
+  };
 
   const refreshActiveTab = async () => {
     if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
       try {
         const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-        if (tab) {
+        if (tab && tab.id) {
           const url = tab.url || '';
           const isInternal =
             url.startsWith('chrome://') ||
@@ -59,6 +101,14 @@ export default function App(): React.JSX.Element {
             url: tab.url,
             isInternal,
           });
+
+          setSelectedTabId((prev) => {
+            if (prev <= 0) {
+              fetchTabState(tab.id!);
+              return tab.id!;
+            }
+            return prev;
+          });
         }
       } catch (err) {
         console.warn('[Vision AI] Error querying active tab:', err);
@@ -66,85 +116,126 @@ export default function App(): React.JSX.Element {
     }
   };
 
-  useEffect(() => {
-    // 1. Fetch current agent state on mount
-    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      try {
-        chrome.runtime.sendMessage({ type: 'GET_AGENT_STATE' }, (res) => {
-          if (chrome.runtime.lastError) {
-            // Service worker waking up or not ready; state will arrive via broadcast
-            return;
-          }
-          if (res && typeof res === 'object') {
-            setState(res as AgentSessionState);
-          }
-        });
-      } catch (err) {
-        console.warn('[Vision AI] Initial state query warning:', err);
-      }
+  const handleSelectTab = (tabId: number) => {
+    setSelectedTabId(tabId);
+    fetchTabState(tabId);
+    const session = tabSessions.find((s) => s.tabId === tabId);
+    if (session) {
+      const isInternal =
+        session.url.startsWith('chrome://') ||
+        session.url.startsWith('chrome-extension://') ||
+        session.url.startsWith('edge://') ||
+        session.url.startsWith('devtools://') ||
+        session.url.startsWith('about:');
+      setActiveTab({
+        id: session.tabId,
+        title: session.title,
+        url: session.url,
+        isInternal,
+      });
+    }
+  };
 
-      // 2. Listen for real-time broadcasts from background service worker
+  const handleFocusChromeTab = (tabId: number) => {
+    if (typeof chrome !== 'undefined' && chrome.tabs?.update) {
+      chrome.tabs.update(tabId, { active: true }).catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    // 1. Initial tab discovery & state fetch
+    refreshActiveTab();
+    refreshTabSessions();
+
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({ type: 'GET_AGENT_STATE' }, (res) => {
+        if (chrome.runtime.lastError) return;
+        if (res && typeof res === 'object') {
+          setState(res as AgentSessionState);
+          if (res.tabId && res.tabId > 0) {
+            setSelectedTabId(res.tabId);
+          }
+        }
+      });
+
+      // 2. Real-time background broadcast listener
       const listener = (msg: { type: string; state?: AgentSessionState }) => {
         if (msg && msg.type === 'AGENT_STATE_UPDATED' && msg.state) {
-          setState(msg.state);
+          // Update tab session badges
+          setTabSessions((prev) =>
+            prev.map((s) =>
+              s.tabId === msg.state!.tabId
+                ? {
+                    ...s,
+                    status: msg.state!.status,
+                    stepNumber: msg.state!.stepNumber,
+                    goal: msg.state!.goal,
+                  }
+                : s
+            )
+          );
+
+          // Only overwrite active workspace if message belongs to selected tab
+          setSelectedTabId((currentSelected) => {
+            if (msg.state!.tabId === currentSelected || currentSelected <= 0) {
+              setState(msg.state!);
+              return msg.state!.tabId;
+            }
+            return currentSelected;
+          });
         }
       };
 
       chrome.runtime.onMessage.addListener(listener);
 
-      // 3. Track active browser tab
-      refreshActiveTab();
-      const onTabActivated = () => refreshActiveTab();
-      const onTabUpdated = () => refreshActiveTab();
+      // 3. Browser tab event listeners
+      const onTabActivated = (info: { tabId: number }) => {
+        setSelectedTabId(info.tabId);
+        fetchTabState(info.tabId);
+        refreshActiveTab();
+        refreshTabSessions();
+      };
+
+      const onTabUpdated = () => {
+        refreshActiveTab();
+        refreshTabSessions();
+      };
+
+      const onTabRemoved = () => {
+        refreshTabSessions();
+      };
+
       chrome.tabs?.onActivated?.addListener(onTabActivated);
       chrome.tabs?.onUpdated?.addListener(onTabUpdated);
+      chrome.tabs?.onRemoved?.addListener(onTabRemoved);
 
       return () => {
         chrome.runtime.onMessage.removeListener(listener);
         chrome.tabs?.onActivated?.removeListener(onTabActivated);
         chrome.tabs?.onUpdated?.removeListener(onTabUpdated);
+        chrome.tabs?.onRemoved?.removeListener(onTabRemoved);
       };
     }
   }, []);
 
   const handleStartTask = async (taskGoal?: string) => {
-    const goalToRun = taskGoal ?? prompt;
+    const goalToRun = taskGoal ?? activePrompt;
     if (!goalToRun.trim()) return;
 
-    let targetTabId = activeTab.id;
+    const targetTabId = selectedTabId > 0 ? selectedTabId : activeTab.id;
 
-    // Refresh active tab in real time to ensure we target the current webpage
-    if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
-      try {
-        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-        if (tab?.id) {
-          targetTabId = tab.id;
-          const url = tab.url || '';
-          const isInternal =
-            url.startsWith('chrome://') ||
-            url.startsWith('chrome-extension://') ||
-            url.startsWith('edge://') ||
-            url.startsWith('devtools://') ||
-            url.startsWith('about:');
-
-          if (isInternal) {
-            setState((prev) => ({
-              ...prev,
-              status: 'error',
-              error:
-                'Vision AI cannot automate internal Chrome pages (chrome://). Please open or switch to any website (e.g. google.com or wikipedia.org) and try again.',
-            }));
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('[Vision AI] Failed to query tab before launch:', err);
-      }
+    if (activeTab.isInternal) {
+      setState((prev) => ({
+        ...prev,
+        status: 'error',
+        error:
+          'Vision AI cannot automate internal Chrome pages (chrome://). Please open or switch to any website (e.g. google.com or wikipedia.org) and try again.',
+      }));
+      return;
     }
 
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
       chrome.runtime.sendMessage({ type: 'START_TASK', goal: goalToRun, tabId: targetTabId }, () => {
-        // optimistic status
         setState((prev) => ({
           ...prev,
           status: 'running',
@@ -152,63 +243,78 @@ export default function App(): React.JSX.Element {
           stepNumber: 1,
           error: undefined,
         }));
+        refreshTabSessions();
       });
     }
   };
 
   const handlePause = () => {
+    const targetTabId = selectedTabId > 0 ? selectedTabId : undefined;
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'PAUSE_TASK' });
+      chrome.runtime.sendMessage({ type: 'PAUSE_TASK', tabId: targetTabId });
     }
   };
 
   const handleResume = () => {
+    const targetTabId = selectedTabId > 0 ? selectedTabId : undefined;
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'RESUME_TASK' });
+      chrome.runtime.sendMessage({ type: 'RESUME_TASK', tabId: targetTabId });
     }
   };
 
   const handleStop = () => {
+    const targetTabId = selectedTabId > 0 ? selectedTabId : undefined;
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'STOP_TASK' }, () => {
+      chrome.runtime.sendMessage({ type: 'STOP_TASK', tabId: targetTabId }, () => {
         setState((prev) => ({ ...prev, status: 'idle' }));
+        refreshTabSessions();
       });
     }
   };
 
   const handleReset = () => {
+    const targetTabId = selectedTabId > 0 ? selectedTabId : undefined;
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'STOP_TASK' }, () => {
+      chrome.runtime.sendMessage({ type: 'STOP_TASK', tabId: targetTabId }, () => {
         setState(INITIAL_STATE);
-        setPrompt('');
+        if (selectedTabId > 0) {
+          setPromptsByTab((prev) => ({ ...prev, [selectedTabId]: '' }));
+        }
+        refreshTabSessions();
       });
     } else {
       setState(INITIAL_STATE);
-      setPrompt('');
+      if (selectedTabId > 0) {
+        setPromptsByTab((prev) => ({ ...prev, [selectedTabId]: '' }));
+      }
     }
   };
 
   const handleApprove = () => {
+    const targetTabId = selectedTabId > 0 ? selectedTabId : undefined;
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'APPROVE_ACTION', approved: true });
+      chrome.runtime.sendMessage({ type: 'APPROVE_ACTION', approved: true, tabId: targetTabId });
     }
   };
 
   const handleReject = () => {
+    const targetTabId = selectedTabId > 0 ? selectedTabId : undefined;
     if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      chrome.runtime.sendMessage({ type: 'APPROVE_ACTION', approved: false });
+      chrome.runtime.sendMessage({ type: 'APPROVE_ACTION', approved: false, tabId: targetTabId });
     }
   };
 
   const handleRunSkill = (skill: SiteSkill) => {
-    setPrompt(skill.goalPattern);
+    if (selectedTabId > 0) {
+      setPromptsByTab((prev) => ({ ...prev, [selectedTabId]: skill.goalPattern }));
+    }
     handleStartTask(skill.goalPattern);
   };
 
   return (
     <div className="flex flex-col h-screen w-full bg-orbit-dark text-slate-100 p-3.5 select-none font-sans overflow-hidden">
       {/* Top Header */}
-      <header className="flex items-center justify-between border-b border-orbit-border pb-3 mb-3">
+      <header className="flex items-center justify-between border-b border-orbit-border pb-3 mb-2.5">
         <div className="flex items-center gap-2">
           <div className="relative flex items-center justify-center">
             <Orbit className="w-5 h-5 text-orbit-neon animate-spin" style={{ animationDuration: '8s' }} />
@@ -243,6 +349,15 @@ export default function App(): React.JSX.Element {
           </button>
         </div>
       </header>
+
+      {/* Target Tab Selector & Active Agents Bar */}
+      <TabSelectorBar
+        sessions={tabSessions}
+        selectedTabId={selectedTabId}
+        onSelectTab={handleSelectTab}
+        onFocusChromeTab={handleFocusChromeTab}
+        onRefreshTabs={refreshTabSessions}
+      />
 
       {/* Target Webpage Status Bar */}
       <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 mb-2.5 text-[11px] shadow-sm">
@@ -297,8 +412,8 @@ export default function App(): React.JSX.Element {
       {/* Interactive Task Stream & Controls */}
       <TaskStream
         state={state}
-        prompt={prompt}
-        onPromptChange={setPrompt}
+        prompt={activePrompt}
+        onPromptChange={handlePromptChange}
         onStart={() => handleStartTask()}
         onPause={handlePause}
         onResume={handleResume}

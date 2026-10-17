@@ -25,12 +25,25 @@ export class AgentStateMachine {
   private lastKnownUrl = '';
   private actionHistorySignatures: string[] = [];
   private emptyActionCount = 0;
+  private frameElementMap = new Map<number, { frameId: number; localId: number }>();
+  private customStorageKey?: string;
 
-  constructor(router: LLMRouter, hooks: StateMachineHooks = {}) {
+  constructor(router: LLMRouter, hooks: StateMachineHooks = {}, sessionStorageKey?: string) {
     this.router = router;
     this.hooks = hooks;
+    this.customStorageKey = sessionStorageKey;
     this.contextManager = new ByteStableContextManager();
     this.state = this.getInitialState();
+  }
+
+  private getStorageKey(): string {
+    if (this.customStorageKey) {
+      return this.customStorageKey;
+    }
+    if (this.state.tabId > 0) {
+      return `orbit_agent_session_tab_${this.state.tabId}`;
+    }
+    return STORAGE_SESSION_KEY;
   }
 
   private getInitialState(): AgentSessionState {
@@ -57,12 +70,13 @@ export class AgentStateMachine {
     return this.state;
   }
 
-  async restoreSession(): Promise<boolean> {
+  async restoreSession(explicitKey?: string): Promise<boolean> {
     if (typeof chrome === 'undefined' || !chrome.storage?.session) return false;
 
+    const key = explicitKey || this.getStorageKey();
     try {
-      const res = await chrome.storage.session.get(STORAGE_SESSION_KEY);
-      const saved = res[STORAGE_SESSION_KEY] as AgentSessionState | undefined;
+      const res = await chrome.storage.session.get(key);
+      const saved = res[key] as AgentSessionState | undefined;
       if (saved) {
         this.state = saved;
         this.hooks.onStateChange?.(this.state);
@@ -75,9 +89,10 @@ export class AgentStateMachine {
   }
 
   private async persistSession(): Promise<void> {
+    const key = this.getStorageKey();
     if (typeof chrome !== 'undefined' && chrome.storage?.session) {
       try {
-        await chrome.storage.session.set({ [STORAGE_SESSION_KEY]: this.state });
+        await chrome.storage.session.set({ [key]: this.state });
       } catch (err) {
         console.warn('[AgentStateMachine] Failed to persist session:', err);
       }
@@ -118,6 +133,7 @@ export class AgentStateMachine {
     this.lastKnownUrl = '';
     this.actionHistorySignatures = [];
     this.emptyActionCount = 0;
+    this.frameElementMap.clear();
 
     this.state = {
       ...this.getInitialState(),
@@ -451,20 +467,30 @@ export class AgentStateMachine {
   }
 
   private hasCompletionIndication(thought: string): boolean {
-    const lower = (thought || '').toLowerCase();
-    const completionKeywords = [
-      'done',
-      'complete',
-      'finished',
-      'found',
-      'here is',
-      'the answer is',
-      'result:',
-      'success',
-      'born in',
-      'located at',
-    ];
-    return completionKeywords.some((kw) => lower.includes(kw));
+    const text = thought || '';
+
+    // Guard: NEVER match if thought contains future-intent words
+    const futureIntentPattern = /\b(will|going to|need to|next|try to|let's|clicking|opening|scrolling)\b/i;
+    if (futureIntentPattern.test(text)) {
+      return false;
+    }
+
+    // Do NOT match loose single words ("done", "complete", "finished") that easily false-positive on buttons or descriptions
+    // Match explicit task-finished phrases
+    const explicitTaskFinishedPattern =
+      /task (is )?complete|goal (is )?(achieved|complete)|all requested steps (are )?(done|complete)|successfully marked as complete and finished/i;
+    if (explicitTaskFinishedPattern.test(text)) {
+      return true;
+    }
+
+    // Informational query answer indicators (when no future action is planned)
+    const infoAnswerPattern =
+      /\b(the answer is|here is the|result:|born in|located at)\b/i;
+    if (infoAnswerPattern.test(text)) {
+      return true;
+    }
+
+    return false;
   }
 
   private isPureInformationQuery(goal: string): boolean {
@@ -571,19 +597,22 @@ export class AgentStateMachine {
       }
     }
 
+    this.frameElementMap.clear();
+    let mainDistillation = '';
+
     // 2. Direct messaging to content script
     if (chrome.tabs?.sendMessage && tabId > 0) {
       try {
         const res = await chrome.tabs.sendMessage(tabId, { type: 'DISTILL_VIEWPORT' });
         if (res && typeof res.text === 'string' && res.text.trim().length > 0) {
-          return res.text;
+          mainDistillation = res.text;
         }
       } catch (err) {
         console.log('[AgentStateMachine] Content script message error, trying script injection:', err);
       }
 
       // 3. Dynamic content script injection for pre-existing tabs
-      if (chrome.scripting?.executeScript) {
+      if (!mainDistillation && chrome.scripting?.executeScript) {
         try {
           await chrome.scripting.executeScript({
             target: { tabId },
@@ -592,109 +621,273 @@ export class AgentStateMachine {
           await new Promise((r) => setTimeout(r, 200));
           const retryRes = await chrome.tabs.sendMessage(tabId, { type: 'DISTILL_VIEWPORT' });
           if (retryRes && typeof retryRes.text === 'string' && retryRes.text.trim().length > 0) {
-            return retryRes.text;
+            mainDistillation = retryRes.text;
           }
         } catch (injectErr) {
           console.warn('[AgentStateMachine] Content script injection failed, falling back to in-page evaluation:', injectErr);
         }
 
         // 4. In-page direct execution fallback
-        try {
-          const results = await chrome.scripting.executeScript({
-            target: { tabId },
-            func: () => {
-              const doc = document;
-              const w = window;
-              const pageTitle = doc.title || '';
-              const pageUrl = w.location.href || '';
-              const lines: string[] = [`PAGE: ${pageTitle || '(Untitled)'} [${pageUrl}]`];
+        if (!mainDistillation) {
+          try {
+            const results = await chrome.scripting.executeScript({
+              target: { tabId },
+              func: () => {
+                const doc = document;
+                const w = window;
+                const pageTitle = doc.title || '';
+                const pageUrl = w.location.href || '';
+                const lines: string[] = [`PAGE: ${pageTitle || '(Untitled)'} [${pageUrl}]`];
 
-              const winAny = w as any;
-              winAny.__vision_ai_registry__ = winAny.__vision_ai_registry__ || new Map<number, HTMLElement>();
-              const reg: Map<number, HTMLElement> = winAny.__vision_ai_registry__;
-              reg.clear();
+                const winAny = w as any;
+                winAny.__vision_ai_registry__ = winAny.__vision_ai_registry__ || new Map<number, HTMLElement>();
+                const reg: Map<number, HTMLElement> = winAny.__vision_ai_registry__;
+                reg.clear();
 
-              const candidateTags = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'H1', 'H2', 'NAV', 'FORM']);
-              const candidateRoles = new Set(['button', 'link', 'checkbox', 'menuitem', 'tab', 'combobox', 'searchbox', 'textbox']);
+                const candidateTags = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'H1', 'H2', 'NAV', 'FORM']);
+                const candidateRoles = new Set(['button', 'link', 'checkbox', 'menuitem', 'tab', 'combobox', 'searchbox', 'textbox']);
 
-              const allEls = doc.body ? Array.from(doc.body.querySelectorAll<HTMLElement>('*')) : [];
-              let count = 0;
-              let idCounter = 1;
+                const allEls = doc.body ? Array.from(doc.body.querySelectorAll<HTMLElement>('*')) : [];
+                let count = 0;
+                let idCounter = 1;
 
-              for (let i = 0; i < allEls.length && count < 40; i++) {
-                const el = allEls[i];
-                const tag = el.tagName.toUpperCase();
-                const role = (el.getAttribute('role') || '').toLowerCase();
+                for (let i = 0; i < allEls.length && count < 40; i++) {
+                  const el = allEls[i];
+                  const tag = el.tagName.toUpperCase();
+                  const role = (el.getAttribute('role') || '').toLowerCase();
 
-                const isCandidate =
-                  candidateTags.has(tag) ||
-                  candidateRoles.has(role) ||
-                  el.getAttribute('contenteditable') === 'true' ||
-                  (el.hasAttribute('tabindex') && parseInt(el.getAttribute('tabindex') || '-1', 10) >= 0);
+                  const isCandidate =
+                    candidateTags.has(tag) ||
+                    candidateRoles.has(role) ||
+                    el.getAttribute('contenteditable') === 'true' ||
+                    (el.hasAttribute('tabindex') && parseInt(el.getAttribute('tabindex') || '-1', 10) >= 0);
 
-                if (!isCandidate) continue;
+                  if (!isCandidate) continue;
 
-                if (typeof (el as any).checkVisibility === 'function') {
-                  if (!(el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
-                    continue;
+                  if (typeof (el as any).checkVisibility === 'function') {
+                    if (!(el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
+                      continue;
+                    }
+                  } else {
+                    if (el.style.display === 'none' || el.style.visibility === 'hidden') continue;
                   }
-                } else {
-                  if (el.style.display === 'none' || el.style.visibility === 'hidden') continue;
+
+                  const rect = el.getBoundingClientRect();
+                  if (rect.width > 0 || rect.height > 0) {
+                    if (rect.bottom < -50 || rect.top > w.innerHeight + 50) continue;
+                  }
+
+                  const id = idCounter++;
+                  reg.set(id, el);
+
+                  const attrs: string[] = [];
+                  const type = el.getAttribute('type');
+                  if (type) attrs.push(`type="${type}"`);
+                  const placeholder = el.getAttribute('placeholder');
+                  if (placeholder) attrs.push(`placeholder="${placeholder.slice(0, 30)}"`);
+                  const aria = el.getAttribute('aria-label');
+                  if (aria) attrs.push(`label="${aria.slice(0, 25)}"`);
+                  const name = el.getAttribute('name');
+                  if (name) attrs.push(`name="${name}"`);
+                  if (el.hasAttribute('disabled')) attrs.push('disabled');
+
+                  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+                    if (el.value) attrs.push(`value="${el.value.slice(0, 20)}"`);
+                  }
+
+                  const attrStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
+                  const text = tag !== 'INPUT' ? (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30) : '';
+
+                  if (text) {
+                    lines.push(`[${id}] <${tag.toLowerCase()}${attrStr}>${text}</${tag.toLowerCase()}>`);
+                  } else {
+                    lines.push(`[${id}] <${tag.toLowerCase()}${attrStr} />`);
+                  }
+                  count++;
                 }
 
-                const rect = el.getBoundingClientRect();
-                if (rect.width > 0 || rect.height > 0) {
-                  if (rect.bottom < -50 || rect.top > w.innerHeight + 50) continue;
+                if (count === 0 && doc.body) {
+                  const summary = (doc.body.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 300);
+                  lines.push(`(No interactive elements in viewport. Page text summary: "${summary}")`);
                 }
 
-                const id = idCounter++;
-                reg.set(id, el);
+                return lines.join('\n');
+              },
+            });
 
-                const attrs: string[] = [];
-                const type = el.getAttribute('type');
-                if (type) attrs.push(`type="${type}"`);
-                const placeholder = el.getAttribute('placeholder');
-                if (placeholder) attrs.push(`placeholder="${placeholder.slice(0, 30)}"`);
-                const aria = el.getAttribute('aria-label');
-                if (aria) attrs.push(`label="${aria.slice(0, 25)}"`);
-                const name = el.getAttribute('name');
-                if (name) attrs.push(`name="${name}"`);
-                if (el.hasAttribute('disabled')) attrs.push('disabled');
-
-                if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-                  if (el.value) attrs.push(`value="${el.value.slice(0, 20)}"`);
-                }
-
-                const attrStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
-                const text = tag !== 'INPUT' ? (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30) : '';
-
-                if (text) {
-                  lines.push(`[${id}] <${tag.toLowerCase()}${attrStr}>${text}</${tag.toLowerCase()}>`);
-                } else {
-                  lines.push(`[${id}] <${tag.toLowerCase()}${attrStr} />`);
-                }
-                count++;
-              }
-
-              if (count === 0 && doc.body) {
-                const summary = (doc.body.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 300);
-                lines.push(`(No interactive elements in viewport. Page text summary: "${summary}")`);
-              }
-
-              return lines.join('\n');
-            },
-          });
-
-          if (results && results[0]?.result && typeof results[0].result === 'string') {
-            return results[0].result;
+            if (results && results[0]?.result && typeof results[0].result === 'string') {
+              mainDistillation = results[0].result;
+            }
+          } catch (inlineErr) {
+            console.warn('[AgentStateMachine] In-page distillation fallback error:', inlineErr);
           }
-        } catch (inlineErr) {
-          console.warn('[AgentStateMachine] In-page distillation fallback error:', inlineErr);
         }
       }
     }
 
-    return '(Simulated initial viewport DOM)';
+    if (!mainDistillation) {
+      mainDistillation = '(Simulated initial viewport DOM)';
+    }
+
+    // 5. Cross-Frame Distillation: Query child frames for SCORM, NetAcad, & LMS embedded players
+    if (typeof chrome !== 'undefined' && chrome.scripting?.executeScript && tabId > 0) {
+      try {
+        const frameResults = await chrome.scripting.executeScript({
+          target: { tabId, allFrames: true },
+          func: () => {
+            if (window === window.top) {
+              return null; // Skip main frame (already distilled)
+            }
+            if (window.innerWidth < 200 || window.innerHeight < 150) {
+              return null; // Skip tiny tracker / invisible ad iframes
+            }
+
+            const doc = document;
+            const w = window;
+            const frameTitle = doc.title || '';
+            const frameUrl = w.location.href || '';
+
+            const winAny = w as any;
+            winAny.__vision_ai_registry__ = winAny.__vision_ai_registry__ || new Map<number, HTMLElement>();
+            const reg: Map<number, HTMLElement> = winAny.__vision_ai_registry__;
+            reg.clear();
+
+            function collectElements(root: Document | HTMLElement | ShadowRoot): HTMLElement[] {
+              const list: HTMLElement[] = [];
+              const walker = (node: Element) => {
+                if (node instanceof HTMLElement) {
+                  list.push(node);
+                }
+                if (node.shadowRoot) {
+                  const shadowChildren = Array.from(node.shadowRoot.children);
+                  for (const child of shadowChildren) {
+                    walker(child);
+                  }
+                }
+                const children = Array.from(node.children);
+                for (const child of children) {
+                  walker(child);
+                }
+              };
+              if (root instanceof Document) {
+                if (root.body) walker(root.body);
+              } else {
+                const children = Array.from(root.children);
+                for (const child of children) {
+                  walker(child);
+                }
+              }
+              return list;
+            }
+
+            const candidateTags = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'VIDEO', 'H1', 'H2', 'NAV', 'FORM']);
+            const candidateRoles = new Set(['button', 'link', 'checkbox', 'menuitem', 'tab', 'combobox', 'searchbox', 'textbox']);
+
+            const allEls = collectElements(doc);
+            const items: Array<{ localId: number; tag: string; attrStr: string; text: string }> = [];
+            let localIdCounter = 1;
+
+            for (let i = 0; i < allEls.length && items.length < 25; i++) {
+              const el = allEls[i];
+              const tag = el.tagName.toUpperCase();
+              const role = (el.getAttribute('role') || '').toLowerCase();
+
+              const textSample = (el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '');
+              const isLMSAction = /\b(mark as complete|complete|next|continue|resume|start|launch|submit|play|study material|lecture|video|module|lesson)\b/i.test(
+                textSample
+              );
+
+              const isCandidate =
+                candidateTags.has(tag) ||
+                candidateRoles.has(role) ||
+                isLMSAction ||
+                el.getAttribute('contenteditable') === 'true' ||
+                (el.hasAttribute('tabindex') && parseInt(el.getAttribute('tabindex') || '-1', 10) >= 0);
+
+              if (!isCandidate) continue;
+
+              if (typeof (el as any).checkVisibility === 'function') {
+                if (!(el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
+                  continue;
+                }
+              } else {
+                if (el.style.display === 'none' || el.style.visibility === 'hidden') continue;
+              }
+
+              const rect = el.getBoundingClientRect();
+              if (rect.width <= 0 && rect.height <= 0) continue;
+              if (!isLMSAction && (rect.bottom < -50 || rect.top > w.innerHeight + 50)) continue;
+
+              const localId = localIdCounter++;
+              reg.set(localId, el);
+
+              const attrs: string[] = [];
+              const type = el.getAttribute('type');
+              if (type) attrs.push(`type="${type}"`);
+              const placeholder = el.getAttribute('placeholder');
+              if (placeholder) attrs.push(`placeholder="${placeholder.slice(0, 30)}"`);
+              const aria = el.getAttribute('aria-label');
+              if (aria) attrs.push(`label="${aria.slice(0, 25)}"`);
+              const title = el.getAttribute('title');
+              if (title) attrs.push(`title="${title.slice(0, 30)}"`);
+              const expanded = el.getAttribute('aria-expanded');
+              if (expanded !== null) attrs.push(`aria-expanded="${expanded}"`);
+              const checked = el.getAttribute('aria-checked');
+              if (checked !== null) attrs.push(`aria-checked="${checked}"`);
+
+              if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+                if (el.value) attrs.push(`value="${el.value.slice(0, 20)}"`);
+              }
+
+              const attrStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
+              const text = tag !== 'INPUT' ? (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40) : '';
+
+              items.push({ localId, tag: tag.toLowerCase(), attrStr, text });
+            }
+
+            return {
+              frameTitle,
+              frameUrl,
+              items,
+            };
+          },
+        });
+
+        if (Array.isArray(frameResults)) {
+          let frameIndex = 0;
+          for (const fr of frameResults) {
+            const data = fr.result as {
+              frameTitle: string;
+              frameUrl: string;
+              items: Array<{ localId: number; tag: string; attrStr: string; text: string }>;
+            } | null;
+
+            if (fr.frameId > 0 && data && data.items && data.items.length > 0) {
+              frameIndex++;
+              const frameLines: string[] = [
+                `--- IFRAME [Frame ${fr.frameId}: ${data.frameTitle || 'LMS Content'}] ---`,
+              ];
+              for (const item of data.items) {
+                const globalId = frameIndex * 1000 + item.localId;
+                this.frameElementMap.set(globalId, { frameId: fr.frameId, localId: item.localId });
+                const attrStr = item.attrStr ? (item.attrStr.startsWith(' ') ? item.attrStr : ' ' + item.attrStr) : '';
+                if (item.text) {
+                  frameLines.push(`[${globalId}] <${item.tag}${attrStr}>${item.text}</${item.tag}>`);
+                } else {
+                  frameLines.push(`[${globalId}] <${item.tag}${attrStr} />`);
+                }
+              }
+              mainDistillation += '\n' + frameLines.join('\n');
+            }
+          }
+        }
+      } catch (childErr) {
+        console.warn('[AgentStateMachine] Child frame distillation error:', childErr);
+      }
+    }
+
+    return mainDistillation;
+
   }
 
   private async queryTabDelta(tabId: number): Promise<string> {
@@ -762,6 +955,64 @@ export class AgentStateMachine {
           abortReason = 'url_changed';
           break;
         }
+      } else if (act.type === 'open_tab') {
+        if (typeof chrome !== 'undefined' && chrome.tabs?.create && act.value) {
+          try {
+            const newTab = await chrome.tabs.create({ url: act.value, active: true });
+            executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+            if (newTab.id) {
+              const settledUrl = await this.waitForTabSettled(newTab.id, act.value);
+              if (settledUrl) this.lastKnownUrl = settledUrl;
+            }
+          } catch (tabErr) {
+            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(tabErr) });
+            abortedEarly = true;
+            abortReason = 'action_failed';
+            break;
+          }
+        } else {
+          executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+        }
+        if (i < actions.length - 1) {
+          abortedEarly = true;
+          abortReason = 'url_changed';
+          break;
+        }
+      } else if (act.type === 'switch_tab') {
+        if (typeof chrome !== 'undefined' && chrome.tabs && act.value) {
+          try {
+            const parsedId = parseInt(act.value, 10);
+            if (!isNaN(parsedId) && parsedId > 0) {
+              await chrome.tabs.update(parsedId, { active: true });
+              const settledUrl = await this.waitForTabSettled(parsedId, '');
+              if (settledUrl) this.lastKnownUrl = settledUrl;
+              executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+            } else {
+              const allTabs = await chrome.tabs.query({});
+              const match = allTabs.find((t) => (t.url || '').includes(act.value!) || (t.title || '').toLowerCase().includes(act.value!.toLowerCase()));
+              if (match?.id) {
+                await chrome.tabs.update(match.id, { active: true });
+                const settledUrl = await this.waitForTabSettled(match.id, '');
+                if (settledUrl) this.lastKnownUrl = settledUrl;
+                executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+              } else {
+                throw new Error(`No matching tab found for "${act.value}"`);
+              }
+            }
+          } catch (switchErr) {
+            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(switchErr) });
+            abortedEarly = true;
+            abortReason = 'action_failed';
+            break;
+          }
+        } else {
+          executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+        }
+        if (i < actions.length - 1) {
+          abortedEarly = true;
+          abortReason = 'url_changed';
+          break;
+        }
       } else {
         domActions.push(act);
       }
@@ -778,6 +1029,124 @@ export class AgentStateMachine {
     }
 
     if (typeof chrome !== 'undefined' && tabId > 0) {
+      // Check if any action targets a registered child frame (NetAcad SCORM / LMS player)
+      const hasChildFrameAction = domActions.some(
+        (act) => act.id !== undefined && this.frameElementMap.has(act.id)
+      );
+
+      if (hasChildFrameAction && chrome.scripting?.executeScript) {
+        for (const act of domActions) {
+          if (act.id !== undefined && this.frameElementMap.has(act.id)) {
+            const frameTarget = this.frameElementMap.get(act.id)!;
+            try {
+              const frameExecRes = await chrome.scripting.executeScript({
+                target: { tabId, frameIds: [frameTarget.frameId] },
+                func: (actionToExec) => {
+                  const winAny = window as any;
+                  const reg: Map<number, HTMLElement> | undefined = winAny.__vision_ai_registry__;
+                  const targetEl = reg ? reg.get(actionToExec.id) : null;
+                  if (!targetEl) {
+                    return { success: false, error: `Element [${actionToExec.id}] not found in child frame registry` };
+                  }
+
+                  try {
+                    if (actionToExec.type === 'click') {
+                      try { targetEl.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
+                      targetEl.focus();
+                      const rect = targetEl.getBoundingClientRect();
+                      const clientX = rect.left + rect.width / 2;
+                      const clientY = rect.top + rect.height / 2;
+                      const eventInit = { bubbles: true, cancelable: true, composed: true, clientX, clientY, button: 0, buttons: 1 };
+                      targetEl.dispatchEvent(new PointerEvent('pointerover', eventInit));
+                      targetEl.dispatchEvent(new MouseEvent('mouseover', eventInit));
+                      targetEl.dispatchEvent(new PointerEvent('pointerdown', eventInit));
+                      targetEl.dispatchEvent(new MouseEvent('mousedown', eventInit));
+                      targetEl.dispatchEvent(new PointerEvent('pointerup', eventInit));
+                      targetEl.dispatchEvent(new MouseEvent('mouseup', eventInit));
+                      targetEl.click();
+                    } else if (actionToExec.type === 'fill') {
+                      try { targetEl.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
+                      targetEl.focus();
+                      if (targetEl instanceof HTMLInputElement || targetEl instanceof HTMLTextAreaElement) {
+                        const proto = targetEl instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+                        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                        if (setter) setter.call(targetEl, actionToExec.value || '');
+                        else targetEl.value = actionToExec.value || '';
+                        targetEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                        targetEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+                      } else {
+                        targetEl.textContent = actionToExec.value || '';
+                        targetEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                      }
+                    } else if (actionToExec.type === 'complete_media') {
+                      const mediaEls = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'));
+                      for (const media of mediaEls) {
+                        try {
+                          if (isFinite(media.duration) && media.duration > 0) {
+                            media.currentTime = Math.max(0, media.duration - 0.5);
+                          }
+                          media.playbackRate = 2.0;
+                          media.dispatchEvent(new Event('timeupdate', { bubbles: true }));
+                          media.dispatchEvent(new Event('ended', { bubbles: true }));
+                        } catch {}
+                      }
+                    } else if (actionToExec.type === 'scroll') {
+                      window.scrollBy({ top: actionToExec.value === 'up' ? -window.innerHeight * 0.7 : window.innerHeight * 0.7, behavior: 'smooth' });
+                    }
+                    return { success: true };
+                  } catch (e) {
+                    return { success: false, error: String(e) };
+                  }
+                },
+                args: [{ ...act, id: frameTarget.localId }],
+              });
+
+              const ok = Boolean(frameExecRes?.[0]?.result?.success);
+              const errMsg = frameExecRes?.[0]?.result?.error;
+              executedTraces.push({ action: act, timestamp: Date.now(), success: ok, error: errMsg });
+              if (!ok) {
+                abortedEarly = true;
+                abortReason = 'action_failed';
+                break;
+              }
+            } catch (frameErr) {
+              executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(frameErr) });
+              abortedEarly = true;
+              abortReason = 'action_failed';
+              break;
+            }
+          } else {
+            // Main frame action
+            try {
+              const res = (await chrome.tabs.sendMessage(tabId, {
+                type: 'EXECUTE_MACRO',
+                actions: [act],
+              })) as Partial<MacroExecutionResult> | undefined;
+              if (res?.executedTraces?.[0]) {
+                executedTraces.push(res.executedTraces[0]);
+                if (!res.executedTraces[0].success) {
+                  abortedEarly = true;
+                  abortReason = 'action_failed';
+                  break;
+                }
+              } else {
+                executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+              }
+            } catch {
+              executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+            }
+          }
+        }
+
+        return {
+          totalActions: actions.length,
+          executedActions: executedTraces.filter((t) => t.success).length,
+          abortedEarly,
+          abortReason,
+          executedTraces,
+        };
+      }
+
       if (chrome.tabs?.sendMessage) {
         try {
           const res = (await chrome.tabs.sendMessage(tabId, {

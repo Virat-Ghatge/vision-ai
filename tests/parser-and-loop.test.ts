@@ -117,6 +117,22 @@ describe('Vision AI Smooth Agent Loop & Resilient Parser Suite', () => {
         { type: 'go_back' },
       ]);
     });
+
+    it('parses open_tab and switch_tab actions', () => {
+      const json = JSON.stringify({
+        thought: 'Opening new tab and switching',
+        actions: [
+          { type: 'open_tab', value: 'https://coursera.org' },
+          { type: 'switch_tab', value: 'coursera' },
+        ],
+        complete: false,
+      });
+      const plan = parseAgentPlanResponse(json);
+      expect(plan.actions).toEqual([
+        { type: 'open_tab', value: 'https://coursera.org' },
+        { type: 'switch_tab', value: 'coursera' },
+      ]);
+    });
   });
 
   describe('Agent State Machine Loop & Anti-Stall Mechanisms', () => {
@@ -345,4 +361,222 @@ describe('Vision AI Smooth Agent Loop & Resilient Parser Suite', () => {
       await expect(adapter.chat([{ role: 'user', content: 'test' }])).rejects.toThrow(UsageLimitError);
     });
   });
+
+  describe('Milestone 7.3: Completion Heuristics & NetAcad SCORM Cross-Frame Execution', () => {
+    it('strict completion heuristic guards against future-intent and button labels', () => {
+      const stateMachine = new AgentStateMachine(new LLMRouter({ apiKeys: {} }));
+      const hasCompletion = (thought: string) =>
+        (stateMachine as any).hasCompletionIndication(thought);
+
+      // Negative cases: thoughts containing future intent or incomplete status
+      expect(hasCompletion('I will click Mark as complete next')).toBe(false);
+      expect(hasCompletion("Let's click complete")).toBe(false);
+      expect(hasCompletion('Clicking Mark as complete button')).toBe(false);
+      expect(hasCompletion('Need to complete the remaining quizzes')).toBe(false);
+      expect(hasCompletion('Going to open lesson 2')).toBe(false);
+      expect(hasCompletion('not done yet')).toBe(false);
+      expect(hasCompletion('Scrolling down to find next section')).toBe(false);
+
+      // Positive cases: explicit completion statements without future intent
+      expect(hasCompletion('Task is complete.')).toBe(true);
+      expect(hasCompletion('The goal is achieved.')).toBe(true);
+      expect(hasCompletion('All requested steps are done.')).toBe(true);
+      expect(hasCompletion('Successfully marked as complete and finished.')).toBe(true);
+      expect(hasCompletion('The answer is 42.')).toBe(true);
+    });
+
+    it('cross-frame distillation captures SCORM child frames with offset IDs and targets frameId during execution', async () => {
+      const router = new LLMRouter({ apiKeys: { groq: 'test-key' } });
+
+      const fakeChrome: any = {
+        tabs: {
+          get: vi.fn().mockResolvedValue({ id: 10, url: 'https://netacad.com/course/module1', status: 'complete' }),
+          sendMessage: vi.fn().mockResolvedValue({
+            text: 'PAGE: Cisco NetAcad [https://netacad.com]\n[1] <button>Menu</button>',
+          }),
+        },
+        scripting: {
+          executeScript: vi.fn().mockImplementation(async (opts: any) => {
+            if (opts.target?.allFrames) {
+              // Return child SCORM frame
+              return [
+                {
+                  frameId: 3,
+                  result: {
+                    frameTitle: 'SCORM Interactive Player',
+                    frameUrl: 'https://content.netacad.com/scorm/player.html',
+                    items: [
+                      {
+                        localId: 1,
+                        tag: 'button',
+                        attrStr: 'type="button"',
+                        text: 'Mark as complete',
+                      },
+                      {
+                        localId: 2,
+                        tag: 'video',
+                        attrStr: '',
+                        text: '',
+                      },
+                    ],
+                  },
+                },
+              ];
+            } else if (opts.target?.frameIds?.includes(3)) {
+              // Mock execution inside frame 3
+              return [{ result: { success: true } }];
+            }
+            return [{ result: { success: true } }];
+          }),
+        },
+      };
+
+      const originalChrome = (globalThis as any).chrome;
+      (globalThis as any).chrome = fakeChrome;
+
+      try {
+        let initialPromptObservation = '';
+        vi.spyOn(router, 'executeStep').mockImplementation(async (messages: any) => {
+          initialPromptObservation = messages.map((m: any) => m.content).join('\n');
+          return {
+            response: {
+              thought: 'Clicking Mark as complete in SCORM child player.',
+              actions: [{ type: 'click', id: 1001 }],
+              complete: true,
+            },
+            activeTier: 1,
+            provider: 'groq',
+          };
+        });
+
+        const stateMachine = new AgentStateMachine(router);
+        await stateMachine.startTask('Complete NetAcad lesson', 10);
+
+        // Verify child frame elements were captured with frame offset (1001, 1002)
+        expect(initialPromptObservation).toContain('--- IFRAME [Frame 3: SCORM Interactive Player] ---');
+        expect(initialPromptObservation).toContain('[1001] <button type="button">Mark as complete</button>');
+        expect(initialPromptObservation).toContain('[1002] <video />');
+
+        // Verify child frame action was executed targeting frameIds: [3]
+        expect(fakeChrome.scripting.executeScript).toHaveBeenCalledWith(
+          expect.objectContaining({
+            target: { tabId: 10, frameIds: [3] },
+            args: [{ type: 'click', id: 1 }],
+          })
+        );
+      } finally {
+        (globalThis as any).chrome = originalChrome;
+      }
+    });
+
+    it('isolates state, goals, step counters, and storage keys across multiple concurrent tab agents', async () => {
+      const router = new LLMRouter({ apiKeys: { groq: 'test-key' } });
+
+      const sessionStorageData: Record<string, any> = {};
+      const fakeChrome: any = {
+        tabs: {
+          get: vi.fn().mockImplementation(async (id: number) => ({
+            id,
+            url: id === 101 ? 'https://coursera.org/learn/algo' : 'https://netacad.com/courses/ccna',
+            status: 'complete',
+          })),
+          sendMessage: vi.fn().mockImplementation(async (id: number) => ({
+            text: id === 101 ? 'PAGE: Coursera\n[1] <button>Start</button>' : 'PAGE: NetAcad\n[1] <button>Resume</button>',
+          })),
+        },
+        storage: {
+          session: {
+            get: vi.fn().mockImplementation(async (key: string) => ({ [key]: sessionStorageData[key] })),
+            set: vi.fn().mockImplementation(async (obj: Record<string, any>) => {
+              Object.assign(sessionStorageData, obj);
+            }),
+          },
+        },
+      };
+
+      const originalChrome = (globalThis as any).chrome;
+      (globalThis as any).chrome = fakeChrome;
+
+      try {
+        let stepCount101 = 0;
+        let stepCount202 = 0;
+        vi.spyOn(router, 'executeStep').mockImplementation(async (messages: any) => {
+          const userMsg = messages.find((m: any) => m.role === 'user')?.content || '';
+          if (userMsg.includes('Coursera')) {
+            stepCount101++;
+            if (stepCount101 === 1) {
+              return {
+                response: {
+                  thought: 'Clicking start on Coursera lesson',
+                  actions: [{ type: 'click', id: 1 }],
+                  complete: false,
+                },
+                activeTier: 1,
+                provider: 'groq',
+              };
+            } else {
+              return {
+                response: {
+                  thought: 'Coursera Algorithms task is complete.',
+                  actions: [],
+                  complete: true,
+                },
+                activeTier: 1,
+                provider: 'groq',
+              };
+            }
+          } else {
+            stepCount202++;
+            return {
+              response: {
+                thought: 'NetAcad CCNA goal is achieved.',
+                actions: [],
+                complete: true,
+              },
+              activeTier: 1,
+              provider: 'groq',
+            };
+          }
+        });
+
+        // Initialize two separate agents bound to tab 101 and tab 202
+        const agent101 = new AgentStateMachine(router, {}, 'orbit_agent_session_tab_101');
+        const agent202 = new AgentStateMachine(router, {}, 'orbit_agent_session_tab_202');
+
+        await agent101.startTask('Complete Coursera Algorithms', 101);
+        await agent202.startTask('Complete NetAcad CCNA', 202);
+
+        const state101 = agent101.getState();
+        const state202 = agent202.getState();
+
+        // Verify independent goals and tab bindings
+        expect(state101.tabId).toBe(101);
+        expect(state101.goal).toBe('Complete Coursera Algorithms');
+        expect(state101.status).toBe('completed');
+        expect(state101.stepNumber).toBe(2);
+        expect(state101.currentThought).toBe('Coursera Algorithms task is complete.');
+
+        expect(state202.tabId).toBe(202);
+        expect(state202.goal).toBe('Complete NetAcad CCNA');
+        expect(state202.status).toBe('completed');
+        expect(state202.stepNumber).toBe(1);
+        expect(state202.currentThought).toBe('NetAcad CCNA goal is achieved.');
+
+        // Verify isolated per-tab session persistence in chrome.storage.session
+        expect(sessionStorageData['orbit_agent_session_tab_101']).toBeDefined();
+        expect(sessionStorageData['orbit_agent_session_tab_101'].tabId).toBe(101);
+        expect(sessionStorageData['orbit_agent_session_tab_101'].goal).toBe('Complete Coursera Algorithms');
+        expect(sessionStorageData['orbit_agent_session_tab_101'].stepNumber).toBe(2);
+
+        expect(sessionStorageData['orbit_agent_session_tab_202']).toBeDefined();
+        expect(sessionStorageData['orbit_agent_session_tab_202'].tabId).toBe(202);
+        expect(sessionStorageData['orbit_agent_session_tab_202'].goal).toBe('Complete NetAcad CCNA');
+        expect(sessionStorageData['orbit_agent_session_tab_202'].stepNumber).toBe(1);
+      } finally {
+        (globalThis as any).chrome = originalChrome;
+      }
+    });
+  });
 });
+
+

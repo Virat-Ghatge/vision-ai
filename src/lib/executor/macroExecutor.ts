@@ -1,5 +1,5 @@
 import { MacroAction } from '../llm/types';
-import { ElementRegistry, globalElementRegistry } from '../dom/distiller';
+import { ElementRegistry, globalElementRegistry, collectAllElementsDeep } from '../dom/distiller';
 import { DOMDeltaTracker } from '../dom/delta';
 import { CDPActuator } from '../cdp/actuator';
 
@@ -31,6 +31,126 @@ export function highlightTarget(el: HTMLElement): void {
       el.style.outlineOffset = originalOffset;
     } catch {}
   }, 350);
+}
+
+/**
+ * Dispatches realistic pointer and mouse event sequence required by modern LMS / SPA UI frameworks
+ * (React Aria, MUI, Shoelace, NetAcad Adapt Web Components) with composed: true to cross Shadow DOM boundaries.
+ */
+export function dispatchRealisticClick(el: HTMLElement): void {
+  try {
+    el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  } catch {}
+
+  const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+  const clientX = Math.round((rect.left || 0) + (rect.width || 0) / 2);
+  const clientY = Math.round((rect.top || 0) + (rect.height || 0) / 2);
+
+  const win = typeof window !== 'undefined' ? window : undefined;
+  const PointerEventClass = typeof PointerEvent !== 'undefined' ? PointerEvent : MouseEvent;
+
+  const baseInit = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    clientX,
+    clientY,
+    button: 0,
+    buttons: 1,
+    view: win,
+  };
+
+  try {
+    el.dispatchEvent(new PointerEventClass('pointerover', { ...baseInit, buttons: 0 }));
+    el.dispatchEvent(new MouseEvent('mouseover', { ...baseInit, buttons: 0 }));
+    el.dispatchEvent(new PointerEventClass('pointerdown', baseInit));
+    el.dispatchEvent(new MouseEvent('mousedown', baseInit));
+    if (typeof el.focus === 'function') {
+      el.focus();
+    }
+    el.dispatchEvent(new PointerEventClass('pointerup', { ...baseInit, buttons: 0 }));
+    el.dispatchEvent(new MouseEvent('mouseup', { ...baseInit, buttons: 0 }));
+    el.dispatchEvent(new MouseEvent('click', { ...baseInit, buttons: 0 }));
+    if (typeof el.click === 'function') {
+      el.click();
+    }
+  } catch {
+    if (typeof el.click === 'function') {
+      el.click();
+    }
+  }
+}
+
+/**
+ * Smart scrolling engine:
+ * Handles inner overflow-y containers on Coursera and NetAcad (e.g. curriculum sidebars, lecture panes)
+ * as well as top-level window scrolling.
+ */
+export function smartScroll(direction: 'up' | 'down', targetEl?: HTMLElement | null): void {
+  const deltaY = direction === 'up' ? -400 : 400;
+
+  if (targetEl) {
+    let cur: HTMLElement | null = targetEl;
+    let scrollableEl: HTMLElement | null = null;
+    while (cur && cur !== document.body && cur !== document.documentElement) {
+      if (cur.scrollHeight > cur.clientHeight + 10) {
+        scrollableEl = cur;
+        break;
+      }
+      cur = cur.parentElement || ((cur.getRootNode?.() as ShadowRoot)?.host as HTMLElement) || null;
+    }
+
+    if (scrollableEl) {
+      if (typeof scrollableEl.scrollBy === 'function') {
+        scrollableEl.scrollBy({ top: deltaY, behavior: 'instant' });
+      } else {
+        scrollableEl.scrollTop = (scrollableEl.scrollTop || 0) + deltaY;
+      }
+      return;
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      if (typeof window.scrollBy === 'function') {
+        window.scrollBy({ top: deltaY, behavior: 'instant' });
+      }
+    } catch {}
+
+    try {
+      const allEls = collectAllElementsDeep(document);
+      const scrollableContainers: Array<{ el: HTMLElement; area: number }> = [];
+
+      for (const el of allEls) {
+        if (el === document.body || el === document.documentElement) continue;
+        if (el.scrollHeight > el.clientHeight + 20) {
+          try {
+            const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+            const overflowY = style ? style.overflowY || '' : '';
+            if (['auto', 'scroll', 'overlay'].includes(overflowY)) {
+              const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { width: 100, height: 100 };
+              const width = rect.width || 100;
+              const height = rect.height || 100;
+              if (width > 20 && height > 20) {
+                scrollableContainers.push({ el, area: width * height });
+              }
+            }
+          } catch {}
+        }
+      }
+
+      scrollableContainers.sort((a, b) => b.area - a.area);
+
+      for (let i = 0; i < Math.min(2, scrollableContainers.length); i++) {
+        const container = scrollableContainers[i].el;
+        if (typeof container.scrollBy === 'function') {
+          container.scrollBy({ top: deltaY, behavior: 'instant' });
+        } else {
+          container.scrollTop = (container.scrollTop || 0) + deltaY;
+        }
+      }
+    } catch {}
+  }
 }
 
 export function getElementSelector(el: HTMLElement): string {
@@ -238,18 +358,22 @@ export class MacroBatchExecutor {
       case 'click': {
         if (targetEl) {
           highlightTarget(targetEl);
-          try {
-            targetEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
-          } catch {}
+          if (targetEl.tagName === 'VIDEO') {
+            try {
+              const video = targetEl as HTMLVideoElement;
+              if (video.paused) {
+                video.play().catch(() => {});
+              } else {
+                video.pause();
+              }
+            } catch {}
+          }
         }
         if (this.actuator) {
           const res = await this.actuator.click(coords, targetEl);
           if (!res.success) throw new Error(res.error ?? 'Click failed');
         } else if (targetEl) {
-          targetEl.focus();
-          targetEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-          targetEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-          targetEl.click();
+          dispatchRealisticClick(targetEl);
         } else {
           throw new Error(`Target element for click [${action.id}] not found`);
         }
@@ -300,7 +424,7 @@ export class MacroBatchExecutor {
           targetEl.value = action.value ?? '';
           targetEl.dispatchEvent(new Event('change', { bubbles: true }));
         } else if (targetEl) {
-          targetEl.click();
+          dispatchRealisticClick(targetEl);
         } else {
           throw new Error(`Target select element [${action.id}] not found`);
         }
@@ -357,8 +481,33 @@ export class MacroBatchExecutor {
         const dir = action.value === 'up' ? 'up' : 'down';
         if (this.actuator) {
           await this.actuator.scroll(dir);
-        } else if (typeof window !== 'undefined') {
-          window.scrollBy({ top: dir === 'down' ? 400 : -400, behavior: 'smooth' });
+        } else {
+          smartScroll(dir, targetEl);
+        }
+        break;
+      }
+
+      case 'complete_media': {
+        if (typeof document !== 'undefined') {
+          const allEls = collectAllElementsDeep(document);
+          const mediaEls = allEls.filter(
+            (el): el is HTMLVideoElement | HTMLAudioElement =>
+              el.tagName === 'VIDEO' || el.tagName === 'AUDIO'
+          );
+
+          for (const media of mediaEls) {
+            try {
+              if (typeof media.play === 'function') {
+                media.play().catch(() => {});
+              }
+              if (isFinite(media.duration) && media.duration > 0) {
+                media.currentTime = Math.max(0, media.duration - 0.5);
+              }
+              media.playbackRate = 2.0;
+              media.dispatchEvent(new Event('timeupdate', { bubbles: true, composed: true }));
+              media.dispatchEvent(new Event('ended', { bubbles: true, composed: true }));
+            } catch {}
+          }
         }
         break;
       }

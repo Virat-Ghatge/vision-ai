@@ -28,6 +28,9 @@ CORE OPERATIONAL MANDATES:
 - request_vision_crop: { type: "request_vision_crop", id: number }
 - navigate: { type: "navigate", value: "https://..." }
 - go_back: { type: "go_back" }
+- complete_media: { type: "complete_media" }
+- open_tab: { type: "open_tab", value: "https://..." }
+- switch_tab: { type: "switch_tab", value: "<tabId or url substring>" }
 
 3. GUIDELINES:
 - Macro-Batching: You can batch sequential actions together in one turn (e.g. click an accordion [id] or fill an input [id] and press Enter).

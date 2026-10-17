@@ -11,7 +11,10 @@ export type ActionType =
   | 'wait'
   | 'request_vision_crop'
   | 'navigate'
-  | 'go_back';
+  | 'go_back'
+  | 'complete_media'
+  | 'open_tab'
+  | 'switch_tab';
 
 export interface MacroAction {
   type: ActionType;

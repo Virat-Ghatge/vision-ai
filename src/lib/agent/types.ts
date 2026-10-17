@@ -38,13 +38,23 @@ export interface AgentSessionState {
   error?: string;
 }
 
+export interface TabSessionSummary {
+  tabId: number;
+  title: string;
+  url: string;
+  status: AgentStatus;
+  stepNumber: number;
+  goal: string;
+}
+
 export type ExtensionMessage =
   | { type: 'START_TASK'; goal: string; tabId?: number }
-  | { type: 'PAUSE_TASK' }
-  | { type: 'RESUME_TASK' }
-  | { type: 'STOP_TASK' }
-  | { type: 'GET_AGENT_STATE' }
-  | { type: 'APPROVE_ACTION'; approved: boolean }
+  | { type: 'PAUSE_TASK'; tabId?: number }
+  | { type: 'RESUME_TASK'; tabId?: number }
+  | { type: 'STOP_TASK'; tabId?: number }
+  | { type: 'GET_AGENT_STATE'; tabId?: number }
+  | { type: 'APPROVE_ACTION'; approved: boolean; tabId?: number }
+  | { type: 'LIST_TAB_SESSIONS' }
   | { type: 'DISTILL_VIEWPORT' }
   | { type: 'EXECUTE_MACRO'; actions: MacroAction[] }
   | { type: 'GET_DELTA' }

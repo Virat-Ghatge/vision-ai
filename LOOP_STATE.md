@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M6.4`
+- **Task ID:** `M8.2`
 - **Status:** `[x]` Completed
-- **Completed At:** 2026-10-17T12:09:00+05:30
-- **Goal:** Add `navigate` & `go_back` Actions + OpenRouter HTTP 400 Retry.
+- **Completed At:** 2026-10-17
+- **Goal:** Side Panel Per-Tab Workspace & Live Tab Switcher UI (`entrypoints/sidepanel/App.tsx`).
 
 ---
 
@@ -44,6 +44,15 @@
 - [x] `M6.3` Fix DOM Distiller Slot Exhaustion & Add Page Text Summary (`src/lib/dom/distiller.ts`).
 - [x] `M6.4` Add `navigate` & `go_back` Actions + OpenRouter HTTP 400 Retry.
 
+### Milestone 7: Coursera, Cisco NetAcad & Complex SPA/LMS Engine
+- [x] `M7.1` Deep Shadow DOM Traversal & LMS Priority Element Reservation (`src/lib/dom/distiller.ts`, `tests/dom-distiller.test.ts`).
+- [x] `M7.2` Inner Scrollable Container Engine, PointerEvents & Video Control (`src/lib/executor/macroExecutor.ts`, `src/lib/llm/types.ts`, `src/lib/llm/parser.ts`, `src/lib/llm/contextManager.ts`, `tests/actuator-and-vision.test.ts`).
+- [x] `M7.3` Cross-Frame Execution Fallback for NetAcad SCORM Iframes & Completion Heuristic Fix (`src/lib/agent/stateMachine.ts`).
+
+### Milestone 8: Multi-Tab Individual Agent Sessions (Dassi-Style Per-Tab Isolation)
+- [x] `M8.1` Multi-Tab Session Manager (`entrypoints/background.ts`, `src/lib/agent/stateMachine.ts`, `src/lib/agent/types.ts`, `tests/parser-and-loop.test.ts`).
+- [x] `M8.2` Side Panel Per-Tab Workspace & Live Tab Switcher UI (`entrypoints/sidepanel/App.tsx`).
+
 ---
 
 ## Verification Log & Metrics
@@ -71,9 +80,15 @@
 | 20 | M6.2 | PASS (0 errors) | PASS (47 tests) | PASS (404.17 kB bundle) | N/A (Background Hooks) | Wired syncStorageToRouter, checkSkillCache, isDestructiveAction, and compileTraceToSkill |
 | 21 | M6.3 | PASS (0 errors) | PASS (47 tests) | PASS (405.09 kB bundle) | N/A (Distiller Slots) | Removed container tags from LANDMARK_TAGS, fixed pointer check, maxItems: 60, added summary |
 | 22 | M6.4 | PASS (0 errors) | PASS (52 tests) | PASS (407.03 kB bundle) | N/A (Actions & Retry) | Added navigate and go_back actions, relaxed Step 1 guardrail, and OpenRouter HTTP 400 retry |
+| 23 | M7.1 | PASS (0 errors) | PASS (53 tests) | PASS (409.12 kB bundle) | N/A (DOM Distiller) | Recursive Shadow DOM traversal, restricted LMS className check, below-fold Mark as complete, and priority reservation |
+| 24 | M7.2 | PASS (0 errors) | PASS (56 tests) | PASS (411.7 kB bundle) | N/A (Executor & Video) | Smart inner container scrolling, dispatchRealisticClick pointer events, and complete_media HTML5 video handler |
+| 25 | M7.3 | PASS (0 errors) | PASS (58 tests) | PASS (418.09 kB bundle) | N/A (Cross-Frame & Heuristics) | NetAcad SCORM child frame discovery & execution, strict completion heuristic with future intent guard |
+| 26 | M8.1 | PASS (0 errors) | PASS (60 tests) | PASS (420.98 kB bundle) | N/A (Multi-Tab Manager) | TabAgentManager with per-tab isolated state machines, storage keys, LIST_TAB_SESSIONS, open_tab, switch_tab |
+| 27 | M8.2 | PASS (0 errors) | PASS (60 tests) | PASS (427.68 kB bundle) | N/A (Multi-Tab UI) | Per-tab workspace binding, draft prompt caching per tab, TabSelectorBar with live background badges |
 
 ---
 
 ## Current Status
-Milestone 6 is fully completed and verified!
-All verification gates (A: Typecheck, B: Vitest 52/52 tests, C: WXT Build 407.03 kB) are PASS.
+Milestone 7 & Milestone 8 completed and verified across all quality gates!
+- Coursera & Cisco NetAcad complex LMS automation engine fully equipped with deep Shadow DOM walker, smart inner-container scrolling, composed pointer events, SCORM child frame discovery & execution, and HTML5 video automation.
+- Multi-Tab Isolated Agent Sessions (Dassi AI style) fully operational with per-tab state machines, isolated session storage keys, and live TabSelectorBar workspace switching with background agent badges.

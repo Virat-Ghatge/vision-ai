@@ -10,6 +10,9 @@ const VALID_ACTION_TYPES: ReadonlySet<ActionType> = new Set([
   'request_vision_crop',
   'navigate',
   'go_back',
+  'complete_media',
+  'open_tab',
+  'switch_tab',
 ]);
 
 /**

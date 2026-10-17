@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ElementRegistry } from '../src/lib/dom/distiller';
 import { DOMDeltaTracker } from '../src/lib/dom/delta';
-import { MacroBatchExecutor } from '../src/lib/executor/macroExecutor';
+import { MacroBatchExecutor, smartScroll, dispatchRealisticClick } from '../src/lib/executor/macroExecutor';
 import { CDPActuator } from '../src/lib/cdp/actuator';
 import { renderSetOfMarksOverlay, cropScreenshot } from '../src/lib/vision/som';
 
@@ -195,6 +195,76 @@ describe('M3: CDP Actuator, Speculative Macro-Batch Runner & Vision Fallback Sui
 
       expect(input.value).toBe('Vision AI Search');
       expect(formSubmitted).toBe(true);
+    });
+
+    it('smartScroll scrolls an inner overflow-y: auto container', () => {
+      const container = document.createElement('div');
+      container.style.overflowY = 'auto';
+      Object.defineProperty(container, 'scrollHeight', { value: 800, configurable: true });
+      Object.defineProperty(container, 'clientHeight', { value: 300, configurable: true });
+      container.scrollTop = 0;
+      (container as any).scrollBy = vi.fn((opts?: ScrollToOptions | number) => {
+        if (typeof opts === 'object') {
+          container.scrollTop += (opts.top as number) || 0;
+        } else if (typeof opts === 'number') {
+          container.scrollTop += opts;
+        }
+      });
+      document.body.appendChild(container);
+
+      smartScroll('down', container);
+      expect(container.scrollBy).toHaveBeenCalledWith({ top: 400, behavior: 'instant' });
+      expect(container.scrollTop).toBe(400);
+
+      smartScroll('up', container);
+      expect(container.scrollBy).toHaveBeenCalledWith({ top: -400, behavior: 'instant' });
+      expect(container.scrollTop).toBe(0);
+    });
+
+    it('dispatchRealisticClick fires pointerdown and pointerup with composed: true', () => {
+      const btn = document.createElement('button');
+      btn.textContent = 'Coursera Lesson';
+      document.body.appendChild(btn);
+
+      const eventsFired: Array<{ type: string; composed: boolean }> = [];
+      const trackEvent = (e: Event) => {
+        eventsFired.push({ type: e.type, composed: e.composed });
+      };
+
+      ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach((evt) => {
+        btn.addEventListener(evt, trackEvent);
+      });
+
+      dispatchRealisticClick(btn);
+
+      expect(eventsFired.some((e) => e.type === 'pointerdown' && e.composed === true)).toBe(true);
+      expect(eventsFired.some((e) => e.type === 'pointerup' && e.composed === true)).toBe(true);
+      expect(eventsFired.some((e) => e.type === 'click')).toBe(true);
+    });
+
+    it('complete_media seeks and dispatches timeupdate and ended on video elements', async () => {
+      const video = document.createElement('video');
+      Object.defineProperty(video, 'duration', { value: 60, configurable: true });
+      video.play = vi.fn().mockResolvedValue(undefined);
+      document.body.appendChild(video);
+
+      let endedFired = false;
+      let timeupdateFired = false;
+      video.addEventListener('ended', () => {
+        endedFired = true;
+      });
+      video.addEventListener('timeupdate', () => {
+        timeupdateFired = true;
+      });
+
+      const executor = new MacroBatchExecutor({ registry });
+      await executor.executeBatch([{ type: 'complete_media' }]);
+
+      expect(video.play).toHaveBeenCalled();
+      expect(video.playbackRate).toBe(2.0);
+      expect(video.currentTime).toBe(59.5);
+      expect(timeupdateFired).toBe(true);
+      expect(endedFired).toBe(true);
     });
   });
 });

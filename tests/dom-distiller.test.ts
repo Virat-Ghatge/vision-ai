@@ -204,4 +204,55 @@ describe('M2.3: DOM Distillation & Mutation Delta Benchmark Suite', () => {
     btn.remove();
     expect(registry.getElement(id)).toBeNull();
   });
+
+  it('captures buttons inside nested Shadow DOM roots and below-the-fold Mark as complete actions', () => {
+    // 1. Create a host component with open shadow root
+    const customPlayer = document.createElement('div');
+    customPlayer.id = 'adapt-lms-player';
+    const shadowRoot = customPlayer.attachShadow({ mode: 'open' });
+
+    // Inside shadowRoot: nested custom component with its own shadowRoot
+    const innerComponent = document.createElement('div');
+    innerComponent.className = 'inner-scorm-module';
+    const innerShadow = innerComponent.attachShadow({ mode: 'open' });
+
+    const shadowPlayBtn = document.createElement('button');
+    shadowPlayBtn.textContent = 'Play Video Lecture';
+    shadowPlayBtn.setAttribute('aria-expanded', 'false');
+    innerShadow.appendChild(shadowPlayBtn);
+
+    shadowRoot.appendChild(innerComponent);
+    document.body.appendChild(customPlayer);
+
+    // 2. Below-the-fold button (rect.top > innerHeight + 50)
+    const belowFoldBtn = document.createElement('button');
+    belowFoldBtn.textContent = 'Mark as complete';
+    belowFoldBtn.setAttribute('title', 'Complete this module');
+    belowFoldBtn.setAttribute('aria-checked', 'false');
+
+    // Mock getBoundingClientRect so it appears below the fold (e.g. top: 2000px)
+    belowFoldBtn.getBoundingClientRect = () => ({
+      top: 2000,
+      bottom: 2040,
+      left: 100,
+      right: 300,
+      width: 200,
+      height: 40,
+      x: 100,
+      y: 2000,
+      toJSON: () => ({}),
+    });
+    document.body.appendChild(belowFoldBtn);
+
+    const result = distillViewport(document, registry);
+
+    // Assert that shadowPlayBtn inside nested shadow root is captured
+    expect(result.text).toContain('Play Video Lecture');
+    expect(result.text).toContain('aria-expanded="false"');
+
+    // Assert that below-the-fold Mark as complete button is captured with title & aria-checked
+    expect(result.text).toContain('Mark as complete');
+    expect(result.text).toContain('title="Complete this module"');
+    expect(result.text).toContain('aria-checked="false"');
+  });
 });
