@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M8.2`
+- **Task ID:** `M9.1`
 - **Status:** `[x]` Completed
 - **Completed At:** 2026-10-17
-- **Goal:** Side Panel Per-Tab Workspace & Live Tab Switcher UI (`entrypoints/sidepanel/App.tsx`).
+- **Goal:** Marvel Vision UI, Thinking Steps Stream, Self-Healing DOM Registry, and Continuous Step Distillation.
 
 ---
 
@@ -53,6 +53,9 @@
 - [x] `M8.1` Multi-Tab Session Manager (`entrypoints/background.ts`, `src/lib/agent/stateMachine.ts`, `src/lib/agent/types.ts`, `tests/parser-and-loop.test.ts`).
 - [x] `M8.2` Side Panel Per-Tab Workspace & Live Tab Switcher UI (`entrypoints/sidepanel/App.tsx`).
 
+### Milestone 9: Marvel Vision UI & Multi-Step LMS Engine
+- [x] `M9.1` Marvel Vision UI, Thinking Steps Stream, Self-Healing DOM Registry, and Continuous Step Distillation (`entrypoints/sidepanel/App.tsx`, `src/lib/dom/distiller.ts`, `src/lib/executor/macroExecutor.ts`, `src/lib/agent/stateMachine.ts`).
+
 ---
 
 ## Verification Log & Metrics
@@ -85,10 +88,12 @@
 | 25 | M7.3 | PASS (0 errors) | PASS (58 tests) | PASS (418.09 kB bundle) | N/A (Cross-Frame & Heuristics) | NetAcad SCORM child frame discovery & execution, strict completion heuristic with future intent guard |
 | 26 | M8.1 | PASS (0 errors) | PASS (60 tests) | PASS (420.98 kB bundle) | N/A (Multi-Tab Manager) | TabAgentManager with per-tab isolated state machines, storage keys, LIST_TAB_SESSIONS, open_tab, switch_tab |
 | 27 | M8.2 | PASS (0 errors) | PASS (60 tests) | PASS (427.68 kB bundle) | N/A (Multi-Tab UI) | Per-tab workspace binding, draft prompt caching per tab, TabSelectorBar with live background badges |
+| 28 | M9.1 | PASS (0 errors) | PASS (62 tests) | PASS (418.39 kB bundle) | PASS (Verified) | Marvel Vision UI, Thinking Steps Stream, Self-Healing DOM Registry, and Continuous Step Distillation |
 
 ---
 
 ## Current Status
-Milestone 7 & Milestone 8 completed and verified across all quality gates!
-- Coursera & Cisco NetAcad complex LMS automation engine fully equipped with deep Shadow DOM walker, smart inner-container scrolling, composed pointer events, SCORM child frame discovery & execution, and HTML5 video automation.
+Milestone 9 completed and verified across all quality gates!
+- Marvel Vision UI & Multi-Step LMS Engine unpacked and active with thinking steps stream, self-healing DOM registry, and continuous step distillation.
+- Coursera & Cisco NetAcad complex LMS automation engine fully operational with deep Shadow DOM walker, smart inner-container scrolling, composed pointer events, SCORM child frame discovery & execution, and HTML5 video automation.
 - Multi-Tab Isolated Agent Sessions (Dassi AI style) fully operational with per-tab state machines, isolated session storage keys, and live TabSelectorBar workspace switching with background agent badges.
