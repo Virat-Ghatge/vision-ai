@@ -15,20 +15,11 @@ const VALID_ACTION_TYPES: ReadonlySet<ActionType> = new Set([
   'switch_tab',
 ]);
 
-/**
- * Cleans and repairs common LLM JSON formatting flaws:
- * - Trailing commas before } or ]
- * - Smart quotes / curly quotes
- * - JavaScript comments
- */
 function cleanJsonString(str: string): string {
   return str
-    // Normalize unicode smart quotes to ASCII
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2018\u2019]/g, "'")
-    // Remove single-line comments // ... without breaking URLs (e.g. http://, https://)
     .replace(/(?<!:)\/\/[^\n\r]*/g, '')
-    // Remove trailing commas before } or ]
     .replace(/,\s*([}\]])/g, '$1')
     .trim();
 }
@@ -44,7 +35,6 @@ export function parseAgentPlanResponse(rawText: string): AgentPlanResponse {
     };
   }
 
-  // 1. Try markdown fenced code block extraction anywhere in the text
   let jsonCandidate = '';
   const codeBlockMatch = trimmedRaw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (codeBlockMatch && codeBlockMatch[1]) {
@@ -53,21 +43,18 @@ export function parseAgentPlanResponse(rawText: string): AgentPlanResponse {
     jsonCandidate = trimmedRaw;
   }
 
-  // 2. Find first { and last } to isolate the JSON object from surrounding commentary
   const startIdx = jsonCandidate.indexOf('{');
   const endIdx = jsonCandidate.lastIndexOf('}');
 
-  // 3. Fallback: If no JSON braces exist, the model responded in plain text (e.g. safety notice, policy, or direct answer)
   if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
     return {
       thought: trimmedRaw,
       actions: [],
-      complete: true, // Treat direct conversational text or safety notice as completed outcome
+      complete: true,
       rawResponse: rawText,
     };
   }
 
-  // Isolate substring
   const isolated = jsonCandidate.substring(startIdx, endIdx + 1);
 
   try {
@@ -79,7 +66,6 @@ export function parseAgentPlanResponse(rawText: string): AgentPlanResponse {
       try {
         parsed = JSON.parse(cleaned);
       } catch {
-        // Secondary attempt: try repairing unclosed braces if truncated
         const repaired = cleaned.endsWith('}') ? cleaned : cleaned + '}';
         parsed = JSON.parse(cleanJsonString(repaired));
       }
@@ -138,9 +124,9 @@ export function parseAgentPlanResponse(rawText: string): AgentPlanResponse {
       actions.push(act);
     }
 
-    // Heuristic: If model provided 0 actions and thought explicitly states completion, treat as complete
     if (!complete && actions.length === 0 && thought.length > 0) {
       const lowerThought = thought.toLowerCase();
+      const hasFutureIntent = /\b(will|going to|need to|next|try to|let's|clicking|opening|scrolling)\b/i.test(lowerThought);
       const completionKeywords = [
         'task complete',
         'task is complete',
@@ -155,7 +141,7 @@ export function parseAgentPlanResponse(rawText: string): AgentPlanResponse {
         'no further action',
         'all steps completed',
       ];
-      if (completionKeywords.some((kw) => lowerThought.includes(kw))) {
+      if (!hasFutureIntent && completionKeywords.some((kw) => lowerThought.includes(kw))) {
         complete = true;
       }
     }
@@ -167,8 +153,6 @@ export function parseAgentPlanResponse(rawText: string): AgentPlanResponse {
       rawResponse: rawText,
     };
   } catch {
-    // Graceful recovery: If JSON parsing failed despite containing braces,
-    // extract any thought string via regex or return trimmed text directly rather than crashing
     const thoughtMatch = rawText.match(/"thought"\s*:\s*"([^"]+)"/i);
     const recoveredThought = thoughtMatch ? thoughtMatch[1] : trimmedRaw;
 
@@ -180,3 +164,4 @@ export function parseAgentPlanResponse(rawText: string): AgentPlanResponse {
     };
   }
 }
+

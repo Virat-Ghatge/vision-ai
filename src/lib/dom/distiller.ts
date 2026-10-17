@@ -45,9 +45,21 @@ export class ElementRegistry {
       return null;
     }
 
+    // Account for same-origin iframe offset if element lives inside an iframe
+    let offsetX = 0;
+    let offsetY = 0;
+    try {
+      const ownerWin = el.ownerDocument?.defaultView;
+      if (ownerWin && ownerWin !== window && ownerWin.frameElement) {
+        const frameRect = ownerWin.frameElement.getBoundingClientRect();
+        offsetX = frameRect.left;
+        offsetY = frameRect.top;
+      }
+    } catch {}
+
     return {
-      x: Math.round(rect.left + rect.width / 2),
-      y: Math.round(rect.top + rect.height / 2),
+      x: Math.round(offsetX + rect.left + rect.width / 2),
+      y: Math.round(offsetY + rect.top + rect.height / 2),
     };
   }
 
@@ -61,7 +73,6 @@ export class ElementRegistry {
   }
 }
 
-// Global registry singleton for content script execution
 export const globalElementRegistry = new ElementRegistry();
 
 const INTERACTIVE_TAGS = new Set([
@@ -74,6 +85,7 @@ const INTERACTIVE_TAGS = new Set([
   'DETAILS',
   'LABEL',
   'VIDEO',
+  'AUDIO',
 ]);
 
 export const INTERACTIVE_ROLES = new Set([
@@ -103,70 +115,123 @@ export const INTERACTIVE_ROLES = new Set([
 
 const LANDMARK_TAGS = new Set(['H1', 'H2', 'H3']);
 
+const LMS_PRIORITY_REGEX =
+  /\b(mark as complete|mark complete|completed|complete|next|continue|resume|start|launch|submit|play|study material|lecture|video|module|lesson|quiz|grade|transcript)\b/i;
+
 /**
- * Identifies high-priority LMS (Coursera / Cisco NetAcad / Canvas) action controls:
- * "Mark as complete", "Next", "Continue", "Resume", "Start", "Play", etc.
+ * Recursively collects all HTMLElements across standard DOM, open Shadow DOM roots
+ * (used heavily by Cisco NetAcad / Adapt Learning), and accessible same-origin iframes.
  */
+export function collectAllElementsDeep(
+  root: Document | HTMLElement | ShadowRoot,
+  maxNodes = 4000
+): HTMLElement[] {
+  const result: HTMLElement[] = [];
+  const startNode = root instanceof Document ? root.body : root;
+  if (!startNode) return result;
+
+  const visit = (container: HTMLElement | ShadowRoot) => {
+    if (result.length >= maxNodes) return;
+    const children = container.children;
+    for (let i = 0; i < children.length && result.length < maxNodes; i++) {
+      const el = children[i] as HTMLElement;
+      if (!el || !el.tagName) continue;
+      const tag = el.tagName.toUpperCase();
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'SVG' || tag === 'PATH') {
+        continue;
+      }
+
+      result.push(el);
+
+      if (el.shadowRoot) {
+        visit(el.shadowRoot);
+      }
+
+      if (tag === 'IFRAME') {
+        try {
+          const frameDoc = (el as HTMLIFrameElement).contentDocument;
+          if (frameDoc?.body) {
+            visit(frameDoc.body);
+          }
+        } catch {
+          // Cross-origin iframes are handled by background frame aggregation
+        }
+      }
+
+      if (el.children && el.children.length > 0) {
+        visit(el);
+      }
+    }
+  };
+
+  visit(startNode);
+  return result;
+}
+
 export function isHighPriorityLMSAction(el: HTMLElement): boolean {
-  const tagName = el.tagName.toUpperCase();
-  if (tagName === 'VIDEO') return true;
+  const tag = el.tagName.toUpperCase();
+  if (tag === 'VIDEO' || tag === 'AUDIO') return true;
 
-  const candidateTag =
-    ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].includes(tagName) ||
-    el.getAttribute('role') === 'button' ||
-    el.getAttribute('role') === 'link' ||
-    el.getAttribute('role') === 'checkbox';
+  const isActionable =
+    tag === 'BUTTON' ||
+    tag === 'A' ||
+    tag === 'INPUT' ||
+    tag === 'SUMMARY' ||
+    INTERACTIVE_ROLES.has((el.getAttribute('role') || '').toLowerCase()) ||
+    el.hasAttribute('data-testid') ||
+    el.hasAttribute('aria-expanded');
 
-  if (!candidateTag) return false;
+  if (!isActionable) return false;
 
-  const lmsPattern =
-    /\b(mark as complete|complete|next|continue|resume|start|launch|submit|play|study material|lecture|video|module|lesson)\b/i;
-  const text = el.textContent || '';
-  const aria = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || '';
-  const title = el.getAttribute('title') || '';
-  const value = (el as HTMLInputElement).value || '';
+  const sig = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${
+    el.getAttribute('data-testid') || ''
+  } ${(el.textContent || '').slice(0, 80)}`;
 
-  return lmsPattern.test(text) || lmsPattern.test(aria) || lmsPattern.test(title) || lmsPattern.test(value);
+  return LMS_PRIORITY_REGEX.test(sig);
 }
 
 /**
- * Checks if an element is visible in the current viewport.
- * Uses native checkVisibility (Chrome 105+) with fallback for fast, low-overhead evaluation.
- * If allowBelowFold is true (for high-priority LMS controls), does not cutoff elements beyond vh + 50.
+ * Checks if an element is visible. High-priority LMS controls (like "Mark as complete"
+ * or "Next" below the fold in a scrollable lecture pane) are allowed within a wider vertical range
+ * because MacroBatchExecutor automatically scrolls them into view before clicking.
  */
-export function isElementVisible(el: HTMLElement, win: Window = window, allowBelowFold = false): boolean {
+export function isElementVisible(
+  el: HTMLElement,
+  win: Window = window,
+  allowBelowFold = false
+): boolean {
   if (!el.isConnected) return false;
   if (el.hasAttribute('hidden') || el.closest?.('[hidden]')) return false;
+  if (el.getAttribute('aria-hidden') === 'true') return false;
 
-  // Use fast native browser checkVisibility API when available (Chrome 105+)
   if (typeof (el as any).checkVisibility === 'function') {
     try {
       if (!(el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
         return false;
       }
-    } catch {
-      // Fallback if unexpected error
-    }
+    } catch {}
   } else {
-    // Fallback for jsdom / older environments (shallow ancestor check to avoid deep reflow)
     let cur: HTMLElement | null = el;
     let depth = 0;
     while (cur && depth < 8) {
-      if (cur.style?.display === 'none' || cur.style?.visibility === 'hidden' || cur.style?.opacity === '0') {
+      if (
+        cur.style?.display === 'none' ||
+        cur.style?.visibility === 'hidden' ||
+        cur.style?.opacity === '0'
+      ) {
         return false;
       }
       const curStyle = win.getComputedStyle ? win.getComputedStyle(cur) : null;
       if (curStyle) {
-        if (curStyle.display === 'none' || curStyle.visibility === 'hidden' || curStyle.opacity === '0') {
+        if (
+          curStyle.display === 'none' ||
+          curStyle.visibility === 'hidden' ||
+          curStyle.opacity === '0'
+        ) {
           return false;
         }
       }
-      // Traverse up parent, or if in ShadowRoot, traverse up to the shadow host
-      if (!cur.parentElement && (cur.getRootNode?.() as ShadowRoot)?.host) {
-        cur = (cur.getRootNode() as ShadowRoot).host as HTMLElement;
-      } else {
-        cur = cur.parentElement;
-      }
+      cur = cur.parentElement;
       depth++;
     }
   }
@@ -176,9 +241,14 @@ export function isElementVisible(el: HTMLElement, win: Window = window, allowBel
     const vw = win.innerWidth || 1920;
     const vh = win.innerHeight || 1080;
 
-    // In environments with non-zero dimensions, verify viewport bounding
     if (rect.width > 0 || rect.height > 0) {
-      if (rect.bottom < -50 || (!allowBelowFold && rect.top > vh + 50) || rect.right < -50 || rect.left > vw + 50) {
+      const verticalBuffer = allowBelowFold ? vh * 2.5 : 80;
+      if (
+        rect.bottom < -80 ||
+        rect.top > vh + verticalBuffer ||
+        rect.right < -50 ||
+        rect.left > vw + 50
+      ) {
         return false;
       }
     }
@@ -187,9 +257,6 @@ export function isElementVisible(el: HTMLElement, win: Window = window, allowBel
   return true;
 }
 
-/**
- * Determines whether a DOM node is interactive or a semantic landmark.
- */
 export function isCandidateNode(el: HTMLElement, win: Window = window): boolean {
   const tagName = el.tagName.toUpperCase();
 
@@ -215,25 +282,23 @@ export function isCandidateNode(el: HTMLElement, win: Window = window): boolean 
     return true;
   }
 
-  // Interactive attributes: onclick, aria-expanded, aria-controls, data-action
   if (
     el.hasAttribute('onclick') ||
     el.hasAttribute('aria-expanded') ||
-    el.hasAttribute('aria-controls') ||
+    el.hasAttribute('aria-checked') ||
     el.hasAttribute('data-action') ||
     el.hasAttribute('data-clickable')
   ) {
     return true;
   }
 
-  // Check cursor: pointer (CSS styled clickable elements)
   if (typeof win !== 'undefined' && win.getComputedStyle) {
     try {
       const curStyle = win.getComputedStyle(el);
       if (curStyle && curStyle.cursor === 'pointer') {
         if (
           el.children.length <= 2 &&
-          !el.closest('a, button, [role="button"], [role="link"]') &&
+          !el.closest('a, button, [role="button"], [role="link"], [role="menuitem"], [role="tab"]') &&
           (!el.parentElement || win.getComputedStyle(el.parentElement).cursor !== 'pointer')
         ) {
           return true;
@@ -242,89 +307,22 @@ export function isCandidateNode(el: HTMLElement, win: Window = window): boolean 
     } catch {}
   }
 
-  // Common interactive/module class patterns on LMS and course platforms (NetAcad, Canvas, Coursera)
+  // Leaf-only LMS interactive item check (prevents outer container divs from eating budget)
   const className = (el.className || '').toString().toLowerCase();
   if (
-    (className.includes('module') ||
-      className.includes('lesson') ||
-      className.includes('topic') ||
-      className.includes('chapter') ||
-      className.includes('accordion') ||
+    (className.includes('accordion') ||
       className.includes('clickable') ||
       className.includes('btn')) &&
+    el.children.length <= 2 &&
+    !el.querySelector('a, button, input, [role="button"], [role="link"]') &&
+    !el.closest('a, button, [role="button"], [role="link"]') &&
     (el.textContent || '').trim().length > 0 &&
-    (el.textContent || '').trim().length < 120
+    (el.textContent || '').trim().length < 90
   ) {
-    if (
-      !el.querySelector?.('a, button, input, select, textarea, [role="button"], [role="link"], [role="checkbox"]') &&
-      !el.closest?.('a, button, [role="button"], [role="link"], [role="menuitem"], [role="tab"]')
-    ) {
-      return true;
-    }
+    return true;
   }
 
   return false;
-}
-
-/**
- * Recursively collects all HTML elements in pre-order document order, traversing into
- * open ShadowRoot trees (essential for Web Components on LMS / NetAcad / Adapt Learning player)
- * and accessible same-origin iframe contentDocuments.
- */
-export function collectAllElementsDeep(root: Document | HTMLElement | ShadowRoot): HTMLElement[] {
-  const result: HTMLElement[] = [];
-
-  function walk(node: Node | ShadowRoot) {
-    if (node instanceof HTMLElement) {
-      result.push(node);
-
-      if (node.shadowRoot) {
-        const shadowChildren = node.shadowRoot.children;
-        if (shadowChildren) {
-          for (let i = 0; i < shadowChildren.length; i++) {
-            const sc = shadowChildren[i];
-            if (sc instanceof HTMLElement) {
-              walk(sc);
-            }
-          }
-        }
-      }
-
-      if (node instanceof HTMLIFrameElement) {
-        try {
-          const frameDoc = node.contentDocument;
-          if (frameDoc && frameDoc.body) {
-            walk(frameDoc.body);
-          }
-        } catch {}
-      }
-    }
-
-    const children = (node as any).children || node.childNodes;
-    if (children) {
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i];
-        if (child instanceof HTMLElement) {
-          walk(child);
-        }
-      }
-    }
-  }
-
-  const startNode = root instanceof Document ? root.body : root;
-  if (startNode) {
-    const children = (startNode as any).children || startNode.childNodes;
-    if (children) {
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i];
-        if (child instanceof HTMLElement) {
-          walk(child);
-        }
-      }
-    }
-  }
-
-  return result;
 }
 
 function truncateText(str: string, maxLen = 40): string {
@@ -333,10 +331,6 @@ function truncateText(str: string, maxLen = 40): string {
   return cleaned.substring(0, maxLen - 3) + '...';
 }
 
-/**
- * Formats an element into a compact ultra-low-token descriptor:
- * e.g. [12] <button disabled>Submit</button>
- */
 export function formatElementDescriptor(el: HTMLElement, id: number): string {
   const tag = el.tagName.toLowerCase();
   const attrs: string[] = [];
@@ -347,17 +341,8 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
   const placeholder = el.getAttribute('placeholder');
   if (placeholder) attrs.push(`placeholder="${truncateText(placeholder, 35)}"`);
 
-  const ariaLabel = el.getAttribute('aria-label') || el.getAttribute('aria-labelledby');
-  if (ariaLabel) attrs.push(`label="${truncateText(ariaLabel, 25)}"`);
-
-  const title = el.getAttribute('title');
-  if (title) attrs.push(`title="${truncateText(title, 25)}"`);
-
-  const ariaExpanded = el.getAttribute('aria-expanded');
-  if (ariaExpanded !== null) attrs.push(`aria-expanded="${ariaExpanded}"`);
-
-  const ariaChecked = el.getAttribute('aria-checked');
-  if (ariaChecked !== null) attrs.push(`aria-checked="${ariaChecked}"`);
+  const ariaLabel = el.getAttribute('aria-label') || el.getAttribute('title');
+  if (ariaLabel) attrs.push(`label="${truncateText(ariaLabel, 30)}"`);
 
   const role = el.getAttribute('role');
   if (role && role !== tag) attrs.push(`role="${role}"`);
@@ -365,12 +350,30 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
   const name = el.getAttribute('name');
   if (name) attrs.push(`name="${name}"`);
 
-  if (el.hasAttribute('disabled')) {
+  const expanded = el.getAttribute('aria-expanded');
+  if (expanded === 'true' || expanded === 'false') {
+    attrs.push(`expanded=${expanded}`);
+  }
+
+  const ariaChecked = el.getAttribute('aria-checked');
+  if (ariaChecked === 'true' || ariaChecked === 'false') {
+    attrs.push(`checked=${ariaChecked}`);
+  }
+
+  if (el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') {
     attrs.push('disabled');
   }
 
-  // Value formatting for inputs/selects
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+  if (tag === 'video' || tag === 'audio') {
+    const media = el as HTMLMediaElement;
+    attrs.push(media.paused ? 'state="paused"' : 'state="playing"');
+  }
+
+  if (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement
+  ) {
     if (el.value) {
       attrs.push(`value="${truncateText(el.value, 25)}"`);
     }
@@ -379,27 +382,17 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
     }
   }
 
-  if (tag === 'video') {
-    const video = el as HTMLVideoElement;
-    if (video.paused !== undefined) {
-      attrs.push(video.paused ? 'paused' : 'playing');
-    }
-    if (video.duration && isFinite(video.duration)) {
-      attrs.push(`duration="${Math.round(video.duration)}s"`);
-    }
-  }
-
   const attrStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
 
-  // Get direct text content
   let text = '';
   if (tag === 'select') {
     const sel = el as HTMLSelectElement;
-    text = sel.selectedIndex >= 0 && sel.options?.[sel.selectedIndex]
-      ? truncateText(sel.options[sel.selectedIndex].text || '', 20)
-      : '';
-  } else if (tag !== 'input' && tag !== 'video') {
-    text = truncateText(el.textContent || '', 30);
+    text =
+      sel.selectedIndex >= 0 && sel.options?.[sel.selectedIndex]
+        ? truncateText(sel.options[sel.selectedIndex].text || '', 20)
+        : '';
+  } else if (tag !== 'input') {
+    text = truncateText(el.textContent || '', 34);
   }
 
   if (text) {
@@ -419,10 +412,6 @@ export interface DistillResult {
   interactiveCount: number;
 }
 
-/**
- * Walks the DOM, filters non-visible nodes, assigns integer IDs, and formats
- * compact text output guaranteed to be under 800 tokens for standard viewports.
- */
 export function distillViewport(
   root: Document | HTMLElement = document,
   registry: ElementRegistry = globalElementRegistry,
@@ -431,7 +420,6 @@ export function distillViewport(
 ): DistillResult {
   const maxItems = options?.maxItems ?? 60;
   const lines: string[] = [];
-  let totalWalked = 0;
   let interactiveCount = 0;
 
   const walker = root instanceof Document ? root.body : root;
@@ -441,7 +429,8 @@ export function distillViewport(
 
   const doc = root instanceof Document ? root : root.ownerDocument;
   const pageTitle = doc?.title?.trim() || '';
-  const pageUrl = win.location?.href && !win.location.href.startsWith('about:') ? win.location.href : '';
+  const pageUrl =
+    win.location?.href && !win.location.href.startsWith('about:') ? win.location.href : '';
 
   if (options?.includeHeader ?? true) {
     if (pageTitle || pageUrl) {
@@ -450,25 +439,34 @@ export function distillViewport(
   }
 
   const elements = collectAllElementsDeep(walker);
-  totalWalked = elements.length;
+  const totalWalked = elements.length;
 
+  // Separate high-priority LMS elements vs standard interactive elements so key controls are never dropped
   const priorityCandidates: HTMLElement[] = [];
   const standardCandidates: HTMLElement[] = [];
+  const seenSet = new Set<HTMLElement>();
 
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i];
+    if (seenSet.has(el)) continue;
 
     if (!isCandidateNode(el, win)) continue;
+
+    // Skip nested decorative/inner elements inside an interactive parent
+    const interactiveAncestor = el.parentElement?.closest(
+      'button, a, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="checkbox"], [role="radio"]'
+    );
+    if (
+      interactiveAncestor &&
+      !['INPUT', 'SELECT', 'TEXTAREA', 'VIDEO'].includes(el.tagName.toUpperCase())
+    ) {
+      continue;
+    }
 
     const isPriority = isHighPriorityLMSAction(el);
     if (!isElementVisible(el, win, isPriority)) continue;
 
-    // Check if element has an interactive ancestor already capturing it
-    const parentInteractive = el.closest?.('a, button, [role="button"], [role="link"], [role="tab"], [role="menuitem"]');
-    if (parentInteractive && parentInteractive !== el && !['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) {
-      continue;
-    }
-
+    seenSet.add(el);
     if (isPriority) {
       priorityCandidates.push(el);
     } else {
@@ -476,16 +474,37 @@ export function distillViewport(
     }
   }
 
-  // Reserve up to 20 slots for high-priority LMS controls so they are NEVER cut off by maxItems
-  const reservedPriority = priorityCandidates.slice(0, 20);
-  const remainingSlots = Math.max(0, maxItems - reservedPriority.length);
-  const reservedStandard = standardCandidates.slice(0, remainingSlots);
+  // Merge: guarantee up to 22 priority LMS items + fill remaining slots in natural DOM order
+  const reservedPriority = new Set(priorityCandidates.slice(0, 22));
+  const orderedFinal: HTMLElement[] = [];
 
-  const finalCandidates = [...reservedPriority, ...reservedStandard];
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i];
+    if (!seenSet.has(el)) continue;
+    if (reservedPriority.has(el) || standardCandidates.includes(el)) {
+      orderedFinal.push(el);
+    }
+  }
+
+  // Ensure any below-the-fold priority LMS items not yet added get included before hitting cap
+  for (const pEl of reservedPriority) {
+    if (!orderedFinal.includes(pEl)) {
+      orderedFinal.push(pEl);
+    }
+  }
+
   let currentChars = lines.reduce((acc, l) => acc + l.length + 1, 0);
 
-  for (let i = 0; i < finalCandidates.length; i++) {
-    const el = finalCandidates[i];
+  for (let i = 0; i < orderedFinal.length; i++) {
+    const el = orderedFinal[i];
+    const isPriority = reservedPriority.has(el);
+
+    if (
+      !isPriority &&
+      (interactiveCount >= maxItems - reservedPriority.size && interactiveCount >= maxItems)
+    ) {
+      continue;
+    }
 
     if (interactiveCount >= maxItems || Math.ceil(currentChars / 3.8) >= 680) {
       lines.push(`... [${totalWalked - interactiveCount} additional items outside viewport budget]`);
@@ -501,7 +520,9 @@ export function distillViewport(
 
   // Collect visible text snippets from h1, h2, h3, p, article, [class*="price"]
   try {
-    const textEls = walker.querySelectorAll<HTMLElement>('h1, h2, h3, p, article, [class*="price"]');
+    const textEls = walker.querySelectorAll<HTMLElement>(
+      'h1, h2, h3, p, article, [class*="price"]'
+    );
     const snippets: string[] = [];
     let totalChars = 0;
     for (let i = 0; i < textEls.length && totalChars < 350; i++) {
@@ -525,7 +546,6 @@ export function distillViewport(
     }
   } catch {}
 
-  // If no interactive elements found and no summary, provide a text snippet so Vision AI is never blind
   if (interactiveCount === 0 && !lines.some((l) => l.startsWith('PAGE SUMMARY:'))) {
     const textSnippet = (walker.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 300);
     if (textSnippet) {
@@ -539,3 +559,4 @@ export function distillViewport(
     interactiveCount,
   };
 }
+

@@ -34,121 +34,144 @@ export function highlightTarget(el: HTMLElement): void {
 }
 
 /**
- * Dispatches realistic pointer and mouse event sequence required by modern LMS / SPA UI frameworks
- * (React Aria, MUI, Shoelace, NetAcad Adapt Web Components) with composed: true to cross Shadow DOM boundaries.
+ * Dispatches a complete PointerEvent + MouseEvent sequence with composed: true
+ * so React 18/19, React Aria (Coursera), Material UI, and Shadow DOM (Cisco NetAcad)
+ * components reliably trigger their click handlers.
  */
 export function dispatchRealisticClick(el: HTMLElement): void {
   try {
     el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
   } catch {}
 
-  const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
-  const clientX = Math.round((rect.left || 0) + (rect.width || 0) / 2);
-  const clientY = Math.round((rect.top || 0) + (rect.height || 0) / 2);
+  const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 10, top: 10, width: 20, height: 20 };
+  const clientX = Math.round(rect.left + (rect.width || 20) / 2);
+  const clientY = Math.round(rect.top + (rect.height || 20) / 2);
 
-  const win = typeof window !== 'undefined' ? window : undefined;
-  const PointerEventClass = typeof PointerEvent !== 'undefined' ? PointerEvent : MouseEvent;
-
-  const baseInit = {
+  const eventOpts: MouseEventInit = {
     bubbles: true,
     cancelable: true,
     composed: true,
+    view: typeof window !== 'undefined' ? window : undefined,
     clientX,
     clientY,
     button: 0,
     buttons: 1,
-    view: win,
   };
 
+  if (typeof PointerEvent !== 'undefined') {
+    el.dispatchEvent(new PointerEvent('pointerover', { ...eventOpts, pointerId: 1, isPrimary: true }));
+    el.dispatchEvent(new PointerEvent('pointerenter', { ...eventOpts, bubbles: false, pointerId: 1, isPrimary: true }));
+    el.dispatchEvent(new PointerEvent('pointerdown', { ...eventOpts, pointerId: 1, isPrimary: true }));
+  }
+
+  el.dispatchEvent(new MouseEvent('mouseover', eventOpts));
+  el.dispatchEvent(new MouseEvent('mousedown', eventOpts));
   try {
-    el.dispatchEvent(new PointerEventClass('pointerover', { ...baseInit, buttons: 0 }));
-    el.dispatchEvent(new MouseEvent('mouseover', { ...baseInit, buttons: 0 }));
-    el.dispatchEvent(new PointerEventClass('pointerdown', baseInit));
-    el.dispatchEvent(new MouseEvent('mousedown', baseInit));
-    if (typeof el.focus === 'function') {
-      el.focus();
+    el.focus();
+  } catch {}
+
+  if (typeof PointerEvent !== 'undefined') {
+    el.dispatchEvent(new PointerEvent('pointerup', { ...eventOpts, buttons: 0, pointerId: 1, isPrimary: true }));
+  }
+
+  el.dispatchEvent(new MouseEvent('mouseup', { ...eventOpts, buttons: 0 }));
+  el.click();
+}
+
+/**
+ * Scrolls both the main window AND inner scrollable containers (like Coursera's
+ * lecture pane & curriculum sidebar or NetAcad's lesson container).
+ */
+export function smartScroll(
+  direction: 'up' | 'down',
+  targetEl?: HTMLElement | null,
+  amount = 450
+): void {
+  const deltaY = direction === 'down' ? amount : -amount;
+
+  // 1. If a specific element was passed, scroll its nearest scrollable ancestor
+  if (targetEl) {
+    let cur: HTMLElement | null = targetEl;
+    while (cur) {
+      if (cur.scrollHeight > cur.clientHeight + 10) {
+        cur.scrollTop += deltaY;
+        try {
+          cur.scrollBy({ top: deltaY, behavior: 'instant' });
+        } catch {}
+        return;
+      }
+      cur = cur.parentElement || ((cur.getRootNode?.() as ShadowRoot)?.host as HTMLElement) || null;
     }
-    el.dispatchEvent(new PointerEventClass('pointerup', { ...baseInit, buttons: 0 }));
-    el.dispatchEvent(new MouseEvent('mouseup', { ...baseInit, buttons: 0 }));
-    el.dispatchEvent(new MouseEvent('click', { ...baseInit, buttons: 0 }));
-    if (typeof el.click === 'function') {
-      el.click();
+  }
+
+  // 2. Scroll main window
+  if (typeof window !== 'undefined') {
+    try {
+      window.scrollBy({ top: deltaY, behavior: 'instant' });
+    } catch {
+      window.scrollBy(0, deltaY);
     }
-  } catch {
-    if (typeof el.click === 'function') {
-      el.click();
+  }
+
+  // 3. Find and scroll the top 2 largest inner scrollable containers in the DOM / Shadow DOM
+  if (typeof document !== 'undefined' && document.body) {
+    const allNodes = collectAllElementsDeep(document.body, 2500);
+    const scrollables: Array<{ el: HTMLElement; area: number }> = [];
+
+    for (const node of allNodes) {
+      if (node.scrollHeight <= node.clientHeight + 20) continue;
+      if (typeof window !== 'undefined' && window.getComputedStyle) {
+        const style = window.getComputedStyle(node);
+        if (!['auto', 'scroll', 'overlay'].includes(style.overflowY)) continue;
+      }
+      const r = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
+      const area = r && r.width > 0 && r.height > 0 ? r.width * r.height : 1000;
+      scrollables.push({ el: node, area });
+    }
+
+    scrollables.sort((a, b) => b.area - a.area);
+    for (const item of scrollables.slice(0, 2)) {
+      item.el.scrollTop += deltaY;
+      try {
+        item.el.scrollBy({ top: deltaY, behavior: 'instant' });
+      } catch {}
     }
   }
 }
 
 /**
- * Smart scrolling engine:
- * Handles inner overflow-y containers on Coursera and NetAcad (e.g. curriculum sidebars, lecture panes)
- * as well as top-level window scrolling.
+ * Fast-forwards and dispatches completion events on HTML5 <video> and <audio> elements
+ * so LMS platforms (Coursera, NetAcad) register lecture media progress.
  */
-export function smartScroll(direction: 'up' | 'down', targetEl?: HTMLElement | null): void {
-  const deltaY = direction === 'up' ? -400 : 400;
+export async function completePageMedia(targetEl?: HTMLElement | null): Promise<void> {
+  if (typeof document === 'undefined' || !document.body) return;
+  const allElements = collectAllElementsDeep(document.body, 2500);
+  const mediaEls = allElements.filter(
+    (el): el is HTMLMediaElement =>
+      el.tagName.toUpperCase() === 'VIDEO' || el.tagName.toUpperCase() === 'AUDIO'
+  );
 
-  if (targetEl) {
-    let cur: HTMLElement | null = targetEl;
-    let scrollableEl: HTMLElement | null = null;
-    while (cur && cur !== document.body && cur !== document.documentElement) {
-      if (cur.scrollHeight > cur.clientHeight + 10) {
-        scrollableEl = cur;
-        break;
-      }
-      cur = cur.parentElement || ((cur.getRootNode?.() as ShadowRoot)?.host as HTMLElement) || null;
-    }
-
-    if (scrollableEl) {
-      if (typeof scrollableEl.scrollBy === 'function') {
-        scrollableEl.scrollBy({ top: deltaY, behavior: 'instant' });
-      } else {
-        scrollableEl.scrollTop = (scrollableEl.scrollTop || 0) + deltaY;
-      }
-      return;
+  if (targetEl && (targetEl.tagName === 'VIDEO' || targetEl.tagName === 'AUDIO')) {
+    if (!mediaEls.includes(targetEl as HTMLMediaElement)) {
+      mediaEls.unshift(targetEl as HTMLMediaElement);
     }
   }
 
-  if (typeof window !== 'undefined') {
+  for (const media of mediaEls) {
     try {
-      if (typeof window.scrollBy === 'function') {
-        window.scrollBy({ top: deltaY, behavior: 'instant' });
+      media.muted = true;
+      media.playbackRate = 2.0;
+      const playPromise = media.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        await playPromise.catch(() => {});
       }
-    } catch {}
-
-    try {
-      const allEls = collectAllElementsDeep(document);
-      const scrollableContainers: Array<{ el: HTMLElement; area: number }> = [];
-
-      for (const el of allEls) {
-        if (el === document.body || el === document.documentElement) continue;
-        if (el.scrollHeight > el.clientHeight + 20) {
-          try {
-            const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
-            const overflowY = style ? style.overflowY || '' : '';
-            if (['auto', 'scroll', 'overlay'].includes(overflowY)) {
-              const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { width: 100, height: 100 };
-              const width = rect.width || 100;
-              const height = rect.height || 100;
-              if (width > 20 && height > 20) {
-                scrollableContainers.push({ el, area: width * height });
-              }
-            }
-          } catch {}
-        }
+      if (Number.isFinite(media.duration) && media.duration > 1) {
+        media.currentTime = Math.max(0, media.duration - 0.25);
       }
-
-      scrollableContainers.sort((a, b) => b.area - a.area);
-
-      for (let i = 0; i < Math.min(2, scrollableContainers.length); i++) {
-        const container = scrollableContainers[i].el;
-        if (typeof container.scrollBy === 'function') {
-          container.scrollBy({ top: deltaY, behavior: 'instant' });
-        } else {
-          container.scrollTop = (container.scrollTop || 0) + deltaY;
-        }
-      }
+      media.dispatchEvent(new Event('play', { bubbles: true }));
+      media.dispatchEvent(new Event('playing', { bubbles: true }));
+      media.dispatchEvent(new Event('timeupdate', { bubbles: true }));
+      media.dispatchEvent(new Event('ended', { bubbles: true }));
     } catch {}
   }
 }
@@ -223,10 +246,6 @@ export class MacroBatchExecutor {
       (() => (typeof window !== 'undefined' ? window.location.href : ''));
   }
 
-  /**
-   * Executes a sequence of speculative macro-actions with mid-batch validation
-   * circuit breakers: URL navigation, target node disappearance, and alert/validation error mutations.
-   */
   async executeBatch(actions: MacroAction[]): Promise<MacroExecutionResult> {
     const executedTraces: ActionTrace[] = [];
     const initialUrl = this.getCurrentUrl();
@@ -235,7 +254,6 @@ export class MacroBatchExecutor {
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
 
-      // Circuit Breaker 1: URL change when stop_if_url_changes is true
       if (action.stop_if_url_changes && this.getCurrentUrl() !== initialUrl) {
         return {
           totalActions: actions.length,
@@ -246,7 +264,6 @@ export class MacroBatchExecutor {
         };
       }
 
-      // Circuit Breaker 2: Alert or validation error mutated into DOM
       if (this.deltaTracker) {
         const delta = this.deltaTracker.flushDelta();
         if (delta.hasAlertOrError) {
@@ -260,7 +277,6 @@ export class MacroBatchExecutor {
         }
       }
 
-      // Check Vision Crop action
       if (action.type === 'request_vision_crop') {
         executedTraces.push({
           action,
@@ -276,11 +292,14 @@ export class MacroBatchExecutor {
         };
       }
 
-      // Circuit Breaker 3: Target element disappearance
       let targetEl: HTMLElement | null = null;
       if (action.id !== undefined) {
         targetEl = this.registry.getElement(action.id);
-        if (!targetEl || !targetEl.isConnected) {
+        if (
+          (!targetEl || !targetEl.isConnected) &&
+          action.type !== 'scroll' &&
+          action.type !== 'complete_media'
+        ) {
           return {
             totalActions: actions.length,
             executedActions: i,
@@ -304,7 +323,6 @@ export class MacroBatchExecutor {
         elementText = (targetEl.innerText || targetEl.textContent || '').trim().slice(0, 100);
       }
 
-      // Execute atomic action
       try {
         await this.executeSingleAction(action, targetEl, lastTargetEl);
         executedTraces.push({
@@ -333,7 +351,6 @@ export class MacroBatchExecutor {
         };
       }
 
-      // Spec: 120ms debounce between batched steps
       if (i < actions.length - 1 && this.debounceMs > 0) {
         await new Promise((r) => setTimeout(r, this.debounceMs));
       }
@@ -358,16 +375,6 @@ export class MacroBatchExecutor {
       case 'click': {
         if (targetEl) {
           highlightTarget(targetEl);
-          if (targetEl.tagName === 'VIDEO') {
-            try {
-              const video = targetEl as HTMLVideoElement;
-              if (video.paused) {
-                video.play().catch(() => {});
-              } else {
-                video.pause();
-              }
-            } catch {}
-          }
         }
         if (this.actuator) {
           const res = await this.actuator.click(coords, targetEl);
@@ -404,11 +411,11 @@ export class MacroBatchExecutor {
             } else {
               targetEl.value = val;
             }
-            targetEl.dispatchEvent(new Event('input', { bubbles: true }));
-            targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+            targetEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            targetEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
           } else if (targetEl.isContentEditable) {
             targetEl.textContent = val;
-            targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+            targetEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
           }
         } else {
           throw new Error(`Target element for fill [${action.id}] not found`);
@@ -422,7 +429,7 @@ export class MacroBatchExecutor {
         }
         if (targetEl instanceof HTMLSelectElement) {
           targetEl.value = action.value ?? '';
-          targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+          targetEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
         } else if (targetEl) {
           dispatchRealisticClick(targetEl);
         } else {
@@ -433,12 +440,26 @@ export class MacroBatchExecutor {
 
       case 'press': {
         const key = action.value ?? 'Enter';
-        const active = targetEl || lastTargetEl || (typeof document !== 'undefined' ? (document.activeElement as HTMLElement) || document.body : null);
+        const active =
+          targetEl ||
+          lastTargetEl ||
+          (typeof document !== 'undefined'
+            ? (document.activeElement as HTMLElement) || document.body
+            : null);
         if (this.actuator) {
           const res = await this.actuator.pressKey(key, active);
           if (!res.success) throw new Error(res.error ?? 'Press failed');
         } else if (active) {
-          const keyCode = key === 'Enter' ? 13 : key === 'Tab' ? 9 : key === 'Escape' ? 27 : key === 'Backspace' ? 8 : 0;
+          const keyCode =
+            key === 'Enter'
+              ? 13
+              : key === 'Tab'
+              ? 9
+              : key === 'Escape'
+              ? 27
+              : key === 'Backspace'
+              ? 8
+              : 0;
           const eventInit: KeyboardEventInit = {
             key,
             code: key,
@@ -462,7 +483,12 @@ export class MacroBatchExecutor {
           active.dispatchEvent(keyup);
 
           if (key === 'Enter') {
-            const form = active instanceof HTMLInputElement ? active.form : (active.closest ? active.closest('form') : null);
+            const form =
+              active instanceof HTMLInputElement
+                ? active.form
+                : active.closest
+                ? active.closest('form')
+                : null;
             if (form) {
               try {
                 if (typeof form.requestSubmit === 'function') {
@@ -479,36 +505,15 @@ export class MacroBatchExecutor {
 
       case 'scroll': {
         const dir = action.value === 'up' ? 'up' : 'down';
-        if (this.actuator) {
+        if (this.actuator && !targetEl) {
           await this.actuator.scroll(dir);
-        } else {
-          smartScroll(dir, targetEl);
         }
+        smartScroll(dir, targetEl);
         break;
       }
 
       case 'complete_media': {
-        if (typeof document !== 'undefined') {
-          const allEls = collectAllElementsDeep(document);
-          const mediaEls = allEls.filter(
-            (el): el is HTMLVideoElement | HTMLAudioElement =>
-              el.tagName === 'VIDEO' || el.tagName === 'AUDIO'
-          );
-
-          for (const media of mediaEls) {
-            try {
-              if (typeof media.play === 'function') {
-                media.play().catch(() => {});
-              }
-              if (isFinite(media.duration) && media.duration > 0) {
-                media.currentTime = Math.max(0, media.duration - 0.5);
-              }
-              media.playbackRate = 2.0;
-              media.dispatchEvent(new Event('timeupdate', { bubbles: true, composed: true }));
-              media.dispatchEvent(new Event('ended', { bubbles: true, composed: true }));
-            } catch {}
-          }
-        }
+        await completePageMedia(targetEl);
         break;
       }
 
@@ -523,3 +528,4 @@ export class MacroBatchExecutor {
     }
   }
 }
+

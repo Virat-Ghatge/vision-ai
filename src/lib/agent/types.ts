@@ -45,6 +45,7 @@ export interface TabSessionSummary {
   status: AgentStatus;
   stepNumber: number;
   goal: string;
+  isInternal: boolean;
 }
 
 export type ExtensionMessage =
@@ -53,10 +54,11 @@ export type ExtensionMessage =
   | { type: 'RESUME_TASK'; tabId?: number }
   | { type: 'STOP_TASK'; tabId?: number }
   | { type: 'GET_AGENT_STATE'; tabId?: number }
-  | { type: 'APPROVE_ACTION'; approved: boolean; tabId?: number }
   | { type: 'LIST_TAB_SESSIONS' }
+  | { type: 'APPROVE_ACTION'; approved: boolean; tabId?: number }
   | { type: 'DISTILL_VIEWPORT' }
   | { type: 'EXECUTE_MACRO'; actions: MacroAction[] }
   | { type: 'GET_DELTA' }
   | { type: 'REQUEST_VISION_CROP'; targetId: number }
   | { type: 'PING' };
+

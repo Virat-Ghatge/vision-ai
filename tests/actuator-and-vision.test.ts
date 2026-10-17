@@ -203,22 +203,39 @@ describe('M3: CDP Actuator, Speculative Macro-Batch Runner & Vision Fallback Sui
       Object.defineProperty(container, 'scrollHeight', { value: 800, configurable: true });
       Object.defineProperty(container, 'clientHeight', { value: 300, configurable: true });
       container.scrollTop = 0;
-      (container as any).scrollBy = vi.fn((opts?: ScrollToOptions | number) => {
-        if (typeof opts === 'object') {
-          container.scrollTop += (opts.top as number) || 0;
-        } else if (typeof opts === 'number') {
-          container.scrollTop += opts;
-        }
-      });
+      (container as any).scrollBy = vi.fn();
       document.body.appendChild(container);
 
       smartScroll('down', container);
-      expect(container.scrollBy).toHaveBeenCalledWith({ top: 400, behavior: 'instant' });
-      expect(container.scrollTop).toBe(400);
+      expect(container.scrollBy).toHaveBeenCalledWith({ top: 450, behavior: 'instant' });
+      expect(container.scrollTop).toBe(450);
 
       smartScroll('up', container);
-      expect(container.scrollBy).toHaveBeenCalledWith({ top: -400, behavior: 'instant' });
+      expect(container.scrollBy).toHaveBeenCalledWith({ top: -450, behavior: 'instant' });
       expect(container.scrollTop).toBe(0);
+    });
+
+    it('smartScroll on an inner scrollable div scrolls the container when targeting child elements', () => {
+      const scrollableDiv = document.createElement('div');
+      scrollableDiv.className = 'coursera-lecture-sidebar';
+      scrollableDiv.style.overflowY = 'auto';
+      Object.defineProperty(scrollableDiv, 'scrollHeight', { value: 1200, configurable: true });
+      Object.defineProperty(scrollableDiv, 'clientHeight', { value: 400, configurable: true });
+      scrollableDiv.scrollTop = 0;
+      (scrollableDiv as any).scrollBy = vi.fn();
+
+      const childItem = document.createElement('div');
+      childItem.textContent = 'Module 4: Dynamic Programming';
+      scrollableDiv.appendChild(childItem);
+      document.body.appendChild(scrollableDiv);
+
+      smartScroll('down', childItem);
+      expect(scrollableDiv.scrollBy).toHaveBeenCalledWith({ top: 450, behavior: 'instant' });
+      expect(scrollableDiv.scrollTop).toBe(450);
+
+      smartScroll('up', childItem);
+      expect(scrollableDiv.scrollBy).toHaveBeenCalledWith({ top: -450, behavior: 'instant' });
+      expect(scrollableDiv.scrollTop).toBe(0);
     });
 
     it('dispatchRealisticClick fires pointerdown and pointerup with composed: true', () => {
@@ -262,7 +279,7 @@ describe('M3: CDP Actuator, Speculative Macro-Batch Runner & Vision Fallback Sui
 
       expect(video.play).toHaveBeenCalled();
       expect(video.playbackRate).toBe(2.0);
-      expect(video.currentTime).toBe(59.5);
+      expect(video.currentTime).toBe(59.75);
       expect(timeupdateFired).toBe(true);
       expect(endedFired).toBe(true);
     });

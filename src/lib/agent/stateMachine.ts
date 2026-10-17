@@ -1,20 +1,18 @@
-import {
-  AgentSessionState,
-  AgentStatus,
-  TokenMetrics,
-} from './types';
+import { AgentSessionState } from './types';
 import { LLMRouter } from '../llm/router';
 import { ByteStableContextManager } from '../llm/contextManager';
 import { MacroAction } from '../llm/types';
 import { ActionTrace, MacroExecutionResult, AbortReason } from '../executor/macroExecutor';
 
 const DEFAULT_MAX_STEPS = 25;
-const STORAGE_SESSION_KEY = 'orbit_agent_session_state';
+const DEFAULT_STORAGE_SESSION_KEY = 'orbit_agent_session_state';
+const SUBFRAME_ID_MULTIPLIER = 10000;
 
 export interface StateMachineHooks {
   checkSkillCache?: (url: string, goal: string) => Promise<{ matched: boolean; actions?: MacroAction[] }>;
   isDestructiveAction?: (action: MacroAction, textDescription?: string) => { destructive: boolean; reason?: string };
   onStateChange?: (state: AgentSessionState) => void;
+  sessionStorageKey?: string;
 }
 
 export class AgentStateMachine {
@@ -22,28 +20,18 @@ export class AgentStateMachine {
   private router: LLMRouter;
   private contextManager: ByteStableContextManager;
   private hooks: StateMachineHooks;
+  private storageKey: string;
   private lastKnownUrl = '';
   private actionHistorySignatures: string[] = [];
   private emptyActionCount = 0;
   private frameElementMap = new Map<number, { frameId: number; localId: number }>();
-  private customStorageKey?: string;
 
-  constructor(router: LLMRouter, hooks: StateMachineHooks = {}, sessionStorageKey?: string) {
+  constructor(router: LLMRouter, hooks: StateMachineHooks = {}, storageKey?: string) {
     this.router = router;
     this.hooks = hooks;
-    this.customStorageKey = sessionStorageKey;
+    this.storageKey = storageKey ?? hooks.sessionStorageKey ?? DEFAULT_STORAGE_SESSION_KEY;
     this.contextManager = new ByteStableContextManager();
     this.state = this.getInitialState();
-  }
-
-  private getStorageKey(): string {
-    if (this.customStorageKey) {
-      return this.customStorageKey;
-    }
-    if (this.state.tabId > 0) {
-      return `orbit_agent_session_tab_${this.state.tabId}`;
-    }
-    return STORAGE_SESSION_KEY;
   }
 
   private getInitialState(): AgentSessionState {
@@ -70,13 +58,12 @@ export class AgentStateMachine {
     return this.state;
   }
 
-  async restoreSession(explicitKey?: string): Promise<boolean> {
+  async restoreSession(): Promise<boolean> {
     if (typeof chrome === 'undefined' || !chrome.storage?.session) return false;
 
-    const key = explicitKey || this.getStorageKey();
     try {
-      const res = await chrome.storage.session.get(key);
-      const saved = res[key] as AgentSessionState | undefined;
+      const res = await chrome.storage.session.get(this.storageKey);
+      const saved = res[this.storageKey] as AgentSessionState | undefined;
       if (saved) {
         this.state = saved;
         this.hooks.onStateChange?.(this.state);
@@ -89,10 +76,9 @@ export class AgentStateMachine {
   }
 
   private async persistSession(): Promise<void> {
-    const key = this.getStorageKey();
     if (typeof chrome !== 'undefined' && chrome.storage?.session) {
       try {
-        await chrome.storage.session.set({ [key]: this.state });
+        await chrome.storage.session.set({ [this.storageKey]: this.state });
       } catch (err) {
         console.warn('[AgentStateMachine] Failed to persist session:', err);
       }
@@ -103,7 +89,6 @@ export class AgentStateMachine {
   async startTask(goal: string, tabId: number): Promise<void> {
     let targetTabId = tabId;
 
-    // Automatic tab resolution fallback if tabId is missing or 0
     if (targetTabId <= 0 && typeof chrome !== 'undefined' && chrome.tabs?.query) {
       try {
         const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -130,10 +115,13 @@ export class AgentStateMachine {
       return;
     }
 
+    if (!this.hooks.sessionStorageKey && targetTabId > 0) {
+      this.storageKey = `orbit_agent_session_tab_${targetTabId}`;
+    }
+
     this.lastKnownUrl = '';
     this.actionHistorySignatures = [];
     this.emptyActionCount = 0;
-    this.frameElementMap.clear();
 
     this.state = {
       ...this.getInitialState(),
@@ -144,14 +132,9 @@ export class AgentStateMachine {
     };
     await this.persistSession();
 
-    // Step 1: Initial Observation & Skill Cache Check
     await this.runStep();
   }
 
-  /**
-   * Executes a single state machine loop cycle:
-   * Observe -> Check Skill Cache -> Route LLM -> Execute Macro-Batch -> Diff
-   */
   async runStep(): Promise<AgentSessionState> {
     if (this.state.status !== 'running') {
       return this.state;
@@ -165,14 +148,11 @@ export class AgentStateMachine {
     }
 
     try {
-      // 1. OBSERVE: Fetch DOM observation from tab
       let observationText = '';
       if (this.state.stepNumber === 1) {
-        // Step 1: Get full distilled viewport DOM
         observationText = await this.queryTabDistillation(this.state.tabId);
         this.lastKnownUrl = await this.getTabUrl(this.state.tabId);
 
-        // 2. CHECK SKILL CACHE: Deterministic 0-token check
         if (this.hooks.checkSkillCache) {
           const tabUrl = this.lastKnownUrl;
           const skillMatch = await this.hooks.checkSkillCache(tabUrl, this.state.goal);
@@ -186,10 +166,8 @@ export class AgentStateMachine {
           }
         }
 
-        // Initialize Byte-Stable Context Manager (Frozen prefix for caching)
         this.contextManager.initializeRun(this.state.goal, observationText);
       } else {
-        // Steps 2..N: Wait for navigation or dynamic page mutations to settle
         const previousUrl = this.lastKnownUrl;
         const currentUrl = await this.waitForTabSettled(this.state.tabId, previousUrl);
         const didNavigate = Boolean(currentUrl && previousUrl && currentUrl !== previousUrl);
@@ -197,16 +175,13 @@ export class AgentStateMachine {
 
         let stepObs = '';
         if (didNavigate) {
-          // If page navigated to a new URL, a fresh distillation is mandatory so Vision AI is never blind
           const freshDom = await this.queryTabDistillation(this.state.tabId);
           stepObs = `ACTION RESULT: Previous action executed. Page navigated to: ${currentUrl}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
         } else {
-          // Check for DOM mutations
           const deltaResult = await this.queryTabDelta(this.state.tabId);
           const hasNoDelta = deltaResult.includes('NO CHANGES');
 
           if (hasNoDelta) {
-            // If delta has no changes, provide the fresh distilled viewport so agent has full visibility
             const freshDom = await this.queryTabDistillation(this.state.tabId);
             stepObs = `CURRENT PAGE: ${currentUrl || 'Current Tab'}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
           } else {
@@ -214,12 +189,11 @@ export class AgentStateMachine {
           }
         }
 
-        // Anti-Stall Loop Note: If agent repeated the same action with no page change
         if (this.actionHistorySignatures.length >= 2) {
           const lastSig = this.actionHistorySignatures[this.actionHistorySignatures.length - 1];
           const prevSig = this.actionHistorySignatures[this.actionHistorySignatures.length - 2];
           if (lastSig === prevSig && !didNavigate) {
-            stepObs += `\n[SYSTEM NOTE: Previous action "${lastSig}" produced no page progression. Avoid repeating it. If the page shows the desired result, set "complete": true with "actions": []. Otherwise try another element or scroll.]`;
+            stepObs += `\n[SYSTEM NOTE: Previous action "${lastSig}" produced no page progression. Avoid repeating it. Try scrolling down ({ "type": "scroll", "value": "down" }), completing media ({ "type": "complete_media" }), or clicking another module/button.]`;
           }
         }
 
@@ -229,7 +203,6 @@ export class AgentStateMachine {
 
       this.updateTelemetry();
 
-      // 3. ROUTE LLM: Query multi-provider tiered router
       const messages = this.contextManager.getMessages();
       let {
         response: plan,
@@ -239,7 +212,6 @@ export class AgentStateMachine {
         fallbackNotice,
       } = await this.router.executeStep(messages, 1);
 
-      // Step 1 Action-First Guardrail: Prevent chatbot refusals or disclaimers on action goals
       const isInfo = this.isPureInformationQuery(this.state.goal);
       const isRefusal = this.hasRefusalIndication(plan.thought);
       const isFinishedWithAnswer =
@@ -247,9 +219,6 @@ export class AgentStateMachine {
         (plan.complete === true && plan.thought.length > 20 && !isRefusal);
 
       if (this.state.stepNumber === 1 && plan.actions.length === 0 && !isFinishedWithAnswer) {
-        console.warn(
-          '[Vision AI] Step 1 action guardrail triggered: Model returned 0 actions without completion. Sending action mandate nudge.'
-        );
         const actionNudge = `[SYSTEM ACTION MANDATE]: You returned 0 actions. As an autonomous browser agent, you must interact with the page. Do not output disclaimers or conversational lectures. Take the immediate next concrete step toward the goal (e.g. click the first module, lesson, start link, or accordion item visible in the viewport DOM). Output valid JSON with at least 1 action.`;
         this.contextManager.appendStepObservation(1, actionNudge);
 
@@ -278,7 +247,6 @@ export class AgentStateMachine {
       this.state.currentThought = plan.thought;
       this.state.pendingActions = plan.actions;
 
-      // 4. HUMAN-IN-THE-LOOP CHECK: Check for destructive actions
       if (this.hooks.isDestructiveAction) {
         for (const action of plan.actions) {
           const check = this.hooks.isDestructiveAction(action);
@@ -295,7 +263,6 @@ export class AgentStateMachine {
         }
       }
 
-      // 5. EXECUTE MACRO-BATCH
       await this.executePendingActions(plan.complete);
       return this.state;
     } catch (err) {
@@ -331,7 +298,6 @@ export class AgentStateMachine {
     const actions = this.state.pendingActions;
     this.state.pendingActions = [];
 
-    // Track action signature for loop detection
     const actionSig = actions.map((a) => `${a.type}:${a.id ?? ''}:${a.value ?? ''}`).join(';');
     if (actionSig) {
       this.actionHistorySignatures.push(actionSig);
@@ -349,38 +315,39 @@ export class AgentStateMachine {
         this.state.completedTraces.push(...execResult.executedTraces);
       }
 
-      if (execResult.abortedEarly) {
+      if (execResult.abortedEarly && execResult.abortReason !== 'vision_crop_requested') {
         this.router.recordFailure();
       } else {
         this.router.resetFailures();
       }
     }
 
-    // Determine completion with intelligent heuristics
     let shouldComplete = isPlanComplete;
 
-    // Refusals are NEVER successful completions
     if (this.hasRefusalIndication(this.state.currentThought)) {
       shouldComplete = false;
     }
 
-    // If model repeatedly returns 0 actions with refusal, halt with error rather than burning 25 steps
-    if (actions.length === 0 && this.emptyActionCount >= 2 && this.hasRefusalIndication(this.state.currentThought)) {
+    if (
+      actions.length === 0 &&
+      this.emptyActionCount >= 2 &&
+      this.hasRefusalIndication(this.state.currentThought)
+    ) {
       this.state.status = 'error';
       this.state.error = this.state.currentThought;
       await this.persistSession();
       return;
     }
 
-    // Special check for Step 1 action goals: 0 actions on Step 1 is NOT completion unless answering an informational query or providing a detailed complete answer
     const isActionGoal = !this.isPureInformationQuery(this.state.goal);
     const isInformationalAnswer =
-      isPlanComplete && this.state.currentThought.length > 20 && !this.hasRefusalIndication(this.state.currentThought);
+      isPlanComplete &&
+      this.state.currentThought.length > 20 &&
+      !this.hasRefusalIndication(this.state.currentThought);
     if (this.state.stepNumber === 1 && actions.length === 0 && isActionGoal && !isInformationalAnswer) {
       shouldComplete = false;
     }
 
-    // Heuristic 1: If 0 actions were returned and thought implies the goal is achieved
     if (!shouldComplete && actions.length === 0) {
       if (
         !this.hasRefusalIndication(this.state.currentThought) &&
@@ -390,7 +357,6 @@ export class AgentStateMachine {
       }
     }
 
-    // Heuristic 2: Anti-Stall Loop Breaker - if identical action was repeated 3 times with no progress
     if (!shouldComplete && this.actionHistorySignatures.length >= 3) {
       const len = this.actionHistorySignatures.length;
       if (
@@ -402,7 +368,6 @@ export class AgentStateMachine {
       }
     }
 
-    // Append plan to context manager history
     this.contextManager.appendAssistantPlan({
       thought: this.state.currentThought,
       actions,
@@ -415,11 +380,9 @@ export class AgentStateMachine {
       return;
     }
 
-    // Advance step and continue
     this.state.stepNumber += 1;
     await this.persistSession();
 
-    // Auto-continue loop if running
     if (this.state.status === 'running') {
       await this.runStep();
     }
@@ -467,30 +430,30 @@ export class AgentStateMachine {
   }
 
   private hasCompletionIndication(thought: string): boolean {
-    const text = thought || '';
-
-    // Guard: NEVER match if thought contains future-intent words
-    const futureIntentPattern = /\b(will|going to|need to|next|try to|let's|clicking|opening|scrolling)\b/i;
-    if (futureIntentPattern.test(text)) {
+    const lower = (thought || '').toLowerCase();
+    // Never treat future-intent thoughts (e.g. "I need to click Mark as complete") as finished
+    if (/\b(will|going to|need to|next|try to|let's|clicking|opening|scrolling)\b/i.test(lower)) {
       return false;
     }
-
-    // Do NOT match loose single words ("done", "complete", "finished") that easily false-positive on buttons or descriptions
-    // Match explicit task-finished phrases
-    const explicitTaskFinishedPattern =
-      /task (is )?complete|goal (is )?(achieved|complete)|all requested steps (are )?(done|complete)|successfully marked as complete and finished/i;
-    if (explicitTaskFinishedPattern.test(text)) {
-      return true;
-    }
-
-    // Informational query answer indicators (when no future action is planned)
-    const infoAnswerPattern =
-      /\b(the answer is|here is the|result:|born in|located at)\b/i;
-    if (infoAnswerPattern.test(text)) {
-      return true;
-    }
-
-    return false;
+    const completionPhrases = [
+      'task complete',
+      'task is complete',
+      'goal completed',
+      'goal is complete',
+      'goal achieved',
+      'goal is achieved',
+      'all steps complete',
+      'steps are done',
+      'steps are complete',
+      'finished',
+      'found',
+      'here is',
+      'the answer is',
+      'result:',
+      'born in',
+      'located at',
+    ];
+    return completionPhrases.some((kw) => lower.includes(kw));
   }
 
   private isPureInformationQuery(goal: string): boolean {
@@ -529,7 +492,6 @@ export class AgentStateMachine {
     const startTime = Date.now();
     let currentUrl = previousUrl;
 
-    // Wait up to 3000ms if tab is actively loading/navigating
     while (Date.now() - startTime < 3000) {
       try {
         const tab = await chrome.tabs.get(tabId);
@@ -543,7 +505,6 @@ export class AgentStateMachine {
       await new Promise((r) => setTimeout(r, 80));
     }
 
-    // Brief settling time for DOM rendering / dynamic scripts
     await new Promise((r) => setTimeout(r, 60));
 
     try {
@@ -566,12 +527,125 @@ export class AgentStateMachine {
     return '';
   }
 
+  /**
+   * Collects interactive elements from child iframes (e.g., Cisco NetAcad SCORM / course frames)
+   * using composite IDs (frameId * 10000 + localId).
+   */
+  private async appendSubframeDistillation(tabId: number, mainText: string): Promise<string> {
+    if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript || tabId <= 0) {
+      return mainText;
+    }
+
+    try {
+      const frameResults = await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        func: () => {
+          if (window === window.top) return null;
+          if (window.innerWidth < 180 || window.innerHeight < 120) return null;
+
+          const winAny = window as any;
+          winAny.__vision_ai_subframe_reg__ =
+            winAny.__vision_ai_subframe_reg__ || new Map<number, HTMLElement>();
+          const reg: Map<number, HTMLElement> = winAny.__vision_ai_subframe_reg__;
+          reg.clear();
+
+          const walkDeep = (root: HTMLElement | ShadowRoot, out: HTMLElement[] = []): HTMLElement[] => {
+            const ch = root.children;
+            for (let i = 0; i < ch.length && out.length < 600; i++) {
+              const el = ch[i] as HTMLElement;
+              if (!el || !el.tagName) continue;
+              out.push(el);
+              if (el.shadowRoot) walkDeep(el.shadowRoot, out);
+              if (el.children?.length) walkDeep(el, out);
+            }
+            return out;
+          };
+
+          const all = document.body ? walkDeep(document.body) : [];
+          const items: Array<{ localId: number; desc: string }> = [];
+          let localId = 1;
+
+          for (const el of all) {
+            if (items.length >= 25) break;
+            const tag = el.tagName.toUpperCase();
+            const role = (el.getAttribute('role') || '').toLowerCase();
+            const isAction =
+              ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'VIDEO', 'SUMMARY'].includes(tag) ||
+              ['button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'option'].includes(role) ||
+              el.hasAttribute('onclick') ||
+              el.hasAttribute('aria-expanded');
+            if (!isAction) continue;
+
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) continue;
+
+            const id = localId++;
+            reg.set(id, el);
+            const label = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+            const txt = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 32);
+            const labelAttr = label ? ` label="${label.slice(0, 28)}"` : '';
+            items.push({
+              localId: id,
+              desc: `<${tag.toLowerCase()}${labelAttr}>${txt}</${tag.toLowerCase()}>`,
+            });
+          }
+
+          return items.length > 0 ? items : null;
+        },
+      });
+
+      if (!Array.isArray(frameResults)) return mainText;
+
+      const extraLines: string[] = [];
+      let frameIndex = 0;
+      for (const fr of frameResults) {
+        const frameId = (fr as any).frameId as number | undefined;
+        if (!frameId || frameId <= 0) continue;
+        frameIndex++;
+
+        const res = (fr as any).result as any;
+        if (!res) continue;
+
+        if (Array.isArray(res) && res.length > 0) {
+          extraLines.push(`--- IFRAME [Frame ${frameId}: Embedded Content] ---`);
+          for (const item of res) {
+            const globalId = frameIndex * 1000 + item.localId;
+            this.frameElementMap.set(globalId, { frameId, localId: item.localId });
+            extraLines.push(`[${globalId}] ${item.desc}`);
+          }
+        } else if (res.items && Array.isArray(res.items) && res.items.length > 0) {
+          const title = res.frameTitle || 'LMS Content';
+          extraLines.push(`--- IFRAME [Frame ${frameId}: ${title}] ---`);
+          for (const item of res.items) {
+            const globalId = frameIndex * 1000 + item.localId;
+            this.frameElementMap.set(globalId, { frameId, localId: item.localId });
+            if (item.desc) {
+              extraLines.push(`[${globalId}] ${item.desc}`);
+            } else {
+              const attrStr = item.attrStr ? (item.attrStr.startsWith(' ') ? item.attrStr : ' ' + item.attrStr) : '';
+              if (item.text) {
+                extraLines.push(`[${globalId}] <${item.tag}${attrStr}>${item.text}</${item.tag}>`);
+              } else {
+                extraLines.push(`[${globalId}] <${item.tag}${attrStr} />`);
+              }
+            }
+          }
+        }
+      }
+
+      if (extraLines.length > 0) {
+        return `${mainText}\n${extraLines.join('\n')}`;
+      }
+    } catch {}
+
+    return mainText;
+  }
+
   private async queryTabDistillation(tabId: number): Promise<string> {
     if (typeof chrome === 'undefined' || !chrome.tabs) {
       return '(Simulated initial viewport DOM)';
     }
 
-    // 1. Validate tab URL & guard against Chrome internal pages
     let tabUrl = '';
     try {
       if (chrome.tabs?.get && tabId > 0) {
@@ -597,22 +671,17 @@ export class AgentStateMachine {
       }
     }
 
-    this.frameElementMap.clear();
-    let mainDistillation = '';
-
-    // 2. Direct messaging to content script
     if (chrome.tabs?.sendMessage && tabId > 0) {
       try {
         const res = await chrome.tabs.sendMessage(tabId, { type: 'DISTILL_VIEWPORT' });
         if (res && typeof res.text === 'string' && res.text.trim().length > 0) {
-          mainDistillation = res.text;
+          return await this.appendSubframeDistillation(tabId, res.text);
         }
       } catch (err) {
         console.log('[AgentStateMachine] Content script message error, trying script injection:', err);
       }
 
-      // 3. Dynamic content script injection for pre-existing tabs
-      if (!mainDistillation && chrome.scripting?.executeScript) {
+      if (chrome.scripting?.executeScript) {
         try {
           await chrome.scripting.executeScript({
             target: { tabId },
@@ -621,273 +690,129 @@ export class AgentStateMachine {
           await new Promise((r) => setTimeout(r, 200));
           const retryRes = await chrome.tabs.sendMessage(tabId, { type: 'DISTILL_VIEWPORT' });
           if (retryRes && typeof retryRes.text === 'string' && retryRes.text.trim().length > 0) {
-            mainDistillation = retryRes.text;
+            return await this.appendSubframeDistillation(tabId, retryRes.text);
           }
         } catch (injectErr) {
-          console.warn('[AgentStateMachine] Content script injection failed, falling back to in-page evaluation:', injectErr);
+          console.warn(
+            '[AgentStateMachine] Content script injection failed, falling back to in-page evaluation:',
+            injectErr
+          );
         }
 
-        // 4. In-page direct execution fallback
-        if (!mainDistillation) {
-          try {
-            const results = await chrome.scripting.executeScript({
-              target: { tabId },
-              func: () => {
-                const doc = document;
-                const w = window;
-                const pageTitle = doc.title || '';
-                const pageUrl = w.location.href || '';
-                const lines: string[] = [`PAGE: ${pageTitle || '(Untitled)'} [${pageUrl}]`];
+        try {
+          const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+              const doc = document;
+              const w = window;
+              const pageTitle = doc.title || '';
+              const pageUrl = w.location.href || '';
+              const lines: string[] = [`PAGE: ${pageTitle || '(Untitled)'} [${pageUrl}]`];
 
-                const winAny = w as any;
-                winAny.__vision_ai_registry__ = winAny.__vision_ai_registry__ || new Map<number, HTMLElement>();
-                const reg: Map<number, HTMLElement> = winAny.__vision_ai_registry__;
-                reg.clear();
+              const winAny = w as any;
+              winAny.__vision_ai_registry__ =
+                winAny.__vision_ai_registry__ || new Map<number, HTMLElement>();
+              const reg: Map<number, HTMLElement> = winAny.__vision_ai_registry__;
+              reg.clear();
 
-                const candidateTags = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'H1', 'H2', 'NAV', 'FORM']);
-                const candidateRoles = new Set(['button', 'link', 'checkbox', 'menuitem', 'tab', 'combobox', 'searchbox', 'textbox']);
-
-                const allEls = doc.body ? Array.from(doc.body.querySelectorAll<HTMLElement>('*')) : [];
-                let count = 0;
-                let idCounter = 1;
-
-                for (let i = 0; i < allEls.length && count < 40; i++) {
-                  const el = allEls[i];
-                  const tag = el.tagName.toUpperCase();
-                  const role = (el.getAttribute('role') || '').toLowerCase();
-
-                  const isCandidate =
-                    candidateTags.has(tag) ||
-                    candidateRoles.has(role) ||
-                    el.getAttribute('contenteditable') === 'true' ||
-                    (el.hasAttribute('tabindex') && parseInt(el.getAttribute('tabindex') || '-1', 10) >= 0);
-
-                  if (!isCandidate) continue;
-
-                  if (typeof (el as any).checkVisibility === 'function') {
-                    if (!(el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
-                      continue;
-                    }
-                  } else {
-                    if (el.style.display === 'none' || el.style.visibility === 'hidden') continue;
-                  }
-
-                  const rect = el.getBoundingClientRect();
-                  if (rect.width > 0 || rect.height > 0) {
-                    if (rect.bottom < -50 || rect.top > w.innerHeight + 50) continue;
-                  }
-
-                  const id = idCounter++;
-                  reg.set(id, el);
-
-                  const attrs: string[] = [];
-                  const type = el.getAttribute('type');
-                  if (type) attrs.push(`type="${type}"`);
-                  const placeholder = el.getAttribute('placeholder');
-                  if (placeholder) attrs.push(`placeholder="${placeholder.slice(0, 30)}"`);
-                  const aria = el.getAttribute('aria-label');
-                  if (aria) attrs.push(`label="${aria.slice(0, 25)}"`);
-                  const name = el.getAttribute('name');
-                  if (name) attrs.push(`name="${name}"`);
-                  if (el.hasAttribute('disabled')) attrs.push('disabled');
-
-                  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-                    if (el.value) attrs.push(`value="${el.value.slice(0, 20)}"`);
-                  }
-
-                  const attrStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
-                  const text = tag !== 'INPUT' ? (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30) : '';
-
-                  if (text) {
-                    lines.push(`[${id}] <${tag.toLowerCase()}${attrStr}>${text}</${tag.toLowerCase()}>`);
-                  } else {
-                    lines.push(`[${id}] <${tag.toLowerCase()}${attrStr} />`);
-                  }
-                  count++;
+              const walkDeep = (root: HTMLElement | ShadowRoot, out: HTMLElement[] = []): HTMLElement[] => {
+                const ch = root.children;
+                for (let i = 0; i < ch.length && out.length < 1500; i++) {
+                  const el = ch[i] as HTMLElement;
+                  if (!el || !el.tagName) continue;
+                  out.push(el);
+                  if (el.shadowRoot) walkDeep(el.shadowRoot, out);
+                  if (el.children?.length) walkDeep(el, out);
                 }
-
-                if (count === 0 && doc.body) {
-                  const summary = (doc.body.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 300);
-                  lines.push(`(No interactive elements in viewport. Page text summary: "${summary}")`);
-                }
-
-                return lines.join('\n');
-              },
-            });
-
-            if (results && results[0]?.result && typeof results[0].result === 'string') {
-              mainDistillation = results[0].result;
-            }
-          } catch (inlineErr) {
-            console.warn('[AgentStateMachine] In-page distillation fallback error:', inlineErr);
-          }
-        }
-      }
-    }
-
-    if (!mainDistillation) {
-      mainDistillation = '(Simulated initial viewport DOM)';
-    }
-
-    // 5. Cross-Frame Distillation: Query child frames for SCORM, NetAcad, & LMS embedded players
-    if (typeof chrome !== 'undefined' && chrome.scripting?.executeScript && tabId > 0) {
-      try {
-        const frameResults = await chrome.scripting.executeScript({
-          target: { tabId, allFrames: true },
-          func: () => {
-            if (window === window.top) {
-              return null; // Skip main frame (already distilled)
-            }
-            if (window.innerWidth < 200 || window.innerHeight < 150) {
-              return null; // Skip tiny tracker / invisible ad iframes
-            }
-
-            const doc = document;
-            const w = window;
-            const frameTitle = doc.title || '';
-            const frameUrl = w.location.href || '';
-
-            const winAny = w as any;
-            winAny.__vision_ai_registry__ = winAny.__vision_ai_registry__ || new Map<number, HTMLElement>();
-            const reg: Map<number, HTMLElement> = winAny.__vision_ai_registry__;
-            reg.clear();
-
-            function collectElements(root: Document | HTMLElement | ShadowRoot): HTMLElement[] {
-              const list: HTMLElement[] = [];
-              const walker = (node: Element) => {
-                if (node instanceof HTMLElement) {
-                  list.push(node);
-                }
-                if (node.shadowRoot) {
-                  const shadowChildren = Array.from(node.shadowRoot.children);
-                  for (const child of shadowChildren) {
-                    walker(child);
-                  }
-                }
-                const children = Array.from(node.children);
-                for (const child of children) {
-                  walker(child);
-                }
+                return out;
               };
-              if (root instanceof Document) {
-                if (root.body) walker(root.body);
-              } else {
-                const children = Array.from(root.children);
-                for (const child of children) {
-                  walker(child);
-                }
-              }
-              return list;
-            }
 
-            const candidateTags = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'VIDEO', 'H1', 'H2', 'NAV', 'FORM']);
-            const candidateRoles = new Set(['button', 'link', 'checkbox', 'menuitem', 'tab', 'combobox', 'searchbox', 'textbox']);
+              const candidateTags = new Set([
+                'A',
+                'BUTTON',
+                'INPUT',
+                'SELECT',
+                'TEXTAREA',
+                'VIDEO',
+                'SUMMARY',
+                'H1',
+                'H2',
+              ]);
+              const candidateRoles = new Set([
+                'button',
+                'link',
+                'checkbox',
+                'menuitem',
+                'tab',
+                'combobox',
+                'searchbox',
+                'textbox',
+              ]);
 
-            const allEls = collectElements(doc);
-            const items: Array<{ localId: number; tag: string; attrStr: string; text: string }> = [];
-            let localIdCounter = 1;
+              const allEls = doc.body ? walkDeep(doc.body) : [];
+              let count = 0;
+              let idCounter = 1;
 
-            for (let i = 0; i < allEls.length && items.length < 25; i++) {
-              const el = allEls[i];
-              const tag = el.tagName.toUpperCase();
-              const role = (el.getAttribute('role') || '').toLowerCase();
+              for (let i = 0; i < allEls.length && count < 55; i++) {
+                const el = allEls[i];
+                const tag = el.tagName.toUpperCase();
+                const role = (el.getAttribute('role') || '').toLowerCase();
 
-              const textSample = (el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '');
-              const isLMSAction = /\b(mark as complete|complete|next|continue|resume|start|launch|submit|play|study material|lecture|video|module|lesson)\b/i.test(
-                textSample
-              );
+                const isCandidate =
+                  candidateTags.has(tag) ||
+                  candidateRoles.has(role) ||
+                  el.getAttribute('contenteditable') === 'true' ||
+                  (el.hasAttribute('tabindex') &&
+                    parseInt(el.getAttribute('tabindex') || '-1', 10) >= 0);
 
-              const isCandidate =
-                candidateTags.has(tag) ||
-                candidateRoles.has(role) ||
-                isLMSAction ||
-                el.getAttribute('contenteditable') === 'true' ||
-                (el.hasAttribute('tabindex') && parseInt(el.getAttribute('tabindex') || '-1', 10) >= 0);
+                if (!isCandidate) continue;
 
-              if (!isCandidate) continue;
-
-              if (typeof (el as any).checkVisibility === 'function') {
-                if (!(el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
-                  continue;
-                }
-              } else {
-                if (el.style.display === 'none' || el.style.visibility === 'hidden') continue;
-              }
-
-              const rect = el.getBoundingClientRect();
-              if (rect.width <= 0 && rect.height <= 0) continue;
-              if (!isLMSAction && (rect.bottom < -50 || rect.top > w.innerHeight + 50)) continue;
-
-              const localId = localIdCounter++;
-              reg.set(localId, el);
-
-              const attrs: string[] = [];
-              const type = el.getAttribute('type');
-              if (type) attrs.push(`type="${type}"`);
-              const placeholder = el.getAttribute('placeholder');
-              if (placeholder) attrs.push(`placeholder="${placeholder.slice(0, 30)}"`);
-              const aria = el.getAttribute('aria-label');
-              if (aria) attrs.push(`label="${aria.slice(0, 25)}"`);
-              const title = el.getAttribute('title');
-              if (title) attrs.push(`title="${title.slice(0, 30)}"`);
-              const expanded = el.getAttribute('aria-expanded');
-              if (expanded !== null) attrs.push(`aria-expanded="${expanded}"`);
-              const checked = el.getAttribute('aria-checked');
-              if (checked !== null) attrs.push(`aria-checked="${checked}"`);
-
-              if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-                if (el.value) attrs.push(`value="${el.value.slice(0, 20)}"`);
-              }
-
-              const attrStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
-              const text = tag !== 'INPUT' ? (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40) : '';
-
-              items.push({ localId, tag: tag.toLowerCase(), attrStr, text });
-            }
-
-            return {
-              frameTitle,
-              frameUrl,
-              items,
-            };
-          },
-        });
-
-        if (Array.isArray(frameResults)) {
-          let frameIndex = 0;
-          for (const fr of frameResults) {
-            const data = fr.result as {
-              frameTitle: string;
-              frameUrl: string;
-              items: Array<{ localId: number; tag: string; attrStr: string; text: string }>;
-            } | null;
-
-            if (fr.frameId > 0 && data && data.items && data.items.length > 0) {
-              frameIndex++;
-              const frameLines: string[] = [
-                `--- IFRAME [Frame ${fr.frameId}: ${data.frameTitle || 'LMS Content'}] ---`,
-              ];
-              for (const item of data.items) {
-                const globalId = frameIndex * 1000 + item.localId;
-                this.frameElementMap.set(globalId, { frameId: fr.frameId, localId: item.localId });
-                const attrStr = item.attrStr ? (item.attrStr.startsWith(' ') ? item.attrStr : ' ' + item.attrStr) : '';
-                if (item.text) {
-                  frameLines.push(`[${globalId}] <${item.tag}${attrStr}>${item.text}</${item.tag}>`);
+                if (typeof (el as any).checkVisibility === 'function') {
+                  if (!(el as any).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
+                    continue;
+                  }
                 } else {
-                  frameLines.push(`[${globalId}] <${item.tag}${attrStr} />`);
+                  if (el.style.display === 'none' || el.style.visibility === 'hidden') continue;
                 }
+
+                const id = idCounter++;
+                reg.set(id, el);
+
+                const attrs: string[] = [];
+                const type = el.getAttribute('type');
+                if (type) attrs.push(`type="${type}"`);
+                const aria = el.getAttribute('aria-label') || el.getAttribute('title');
+                if (aria) attrs.push(`label="${aria.slice(0, 28)}"`);
+                if (el.hasAttribute('disabled')) attrs.push('disabled');
+
+                const attrStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
+                const text =
+                  tag !== 'INPUT'
+                    ? (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 32)
+                    : '';
+
+                if (text) {
+                  lines.push(`[${id}] <${tag.toLowerCase()}${attrStr}>${text}</${tag.toLowerCase()}>`);
+                } else {
+                  lines.push(`[${id}] <${tag.toLowerCase()}${attrStr} />`);
+                }
+                count++;
               }
-              mainDistillation += '\n' + frameLines.join('\n');
-            }
+
+              return lines.join('\n');
+            },
+          });
+
+          if (results && results[0]?.result && typeof results[0].result === 'string') {
+            return await this.appendSubframeDistillation(tabId, results[0].result);
           }
+        } catch (inlineErr) {
+          console.warn('[AgentStateMachine] In-page distillation fallback error:', inlineErr);
         }
-      } catch (childErr) {
-        console.warn('[AgentStateMachine] Child frame distillation error:', childErr);
       }
     }
 
-    return mainDistillation;
-
+    return '(Simulated initial viewport DOM)';
   }
 
   private async queryTabDelta(tabId: number): Promise<string> {
@@ -904,13 +829,52 @@ export class AgentStateMachine {
     return '[DELTA]\nNO CHANGES';
   }
 
+  private async executeSubframeAction(
+    tabId: number,
+    frameId: number,
+    localId: number,
+    act: MacroAction
+  ): Promise<boolean> {
+    if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript) return false;
+    try {
+      const res = await chrome.scripting.executeScript({
+        target: { tabId, frameIds: [frameId] },
+        func: (actionObj: MacroAction) => {
+          const winAny = window as any;
+          const reg: Map<number, HTMLElement> | undefined =
+            winAny.__vision_ai_subframe_reg__ || winAny.__vision_ai_registry__;
+          const el = actionObj.id !== undefined && reg ? reg.get(actionObj.id) : null;
+          if (!el) return false;
+          try {
+            el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+          } catch {}
+          if (actionObj.type === 'click') {
+            el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, composed: true }));
+            el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, composed: true }));
+            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, composed: true }));
+            el.click();
+          } else if (actionObj.type === 'fill' && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+            el.value = actionObj.value || '';
+            el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          }
+          return true;
+        },
+        args: [{ ...act, id: localId }],
+      });
+      return Boolean(res?.[0]?.result);
+    } catch {
+      return false;
+    }
+  }
+
   private async sendActionsToTab(tabId: number, actions: MacroAction[]): Promise<MacroExecutionResult> {
     const executedTraces: ActionTrace[] = [];
     const domActions: MacroAction[] = [];
     let abortedEarly = false;
     let abortReason: AbortReason | undefined;
 
-    // Handle top-level navigation actions before sending DOM actions to content script
     for (let i = 0; i < actions.length; i++) {
       const act = actions[i];
       if (act.type === 'navigate') {
@@ -959,60 +923,52 @@ export class AgentStateMachine {
         if (typeof chrome !== 'undefined' && chrome.tabs?.create && act.value) {
           try {
             const newTab = await chrome.tabs.create({ url: act.value, active: true });
-            executedTraces.push({ action: act, timestamp: Date.now(), success: true });
-            if (newTab.id) {
-              const settledUrl = await this.waitForTabSettled(newTab.id, act.value);
-              if (settledUrl) this.lastKnownUrl = settledUrl;
+            if (newTab?.id) {
+              this.state.tabId = newTab.id;
+              tabId = newTab.id;
+              await this.waitForTabSettled(tabId, '');
             }
+            executedTraces.push({ action: act, timestamp: Date.now(), success: true });
           } catch (tabErr) {
             executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(tabErr) });
-            abortedEarly = true;
-            abortReason = 'action_failed';
-            break;
           }
         } else {
           executedTraces.push({ action: act, timestamp: Date.now(), success: true });
-        }
-        if (i < actions.length - 1) {
-          abortedEarly = true;
-          abortReason = 'url_changed';
-          break;
         }
       } else if (act.type === 'switch_tab') {
-        if (typeof chrome !== 'undefined' && chrome.tabs && act.value) {
+        if (typeof chrome !== 'undefined' && chrome.tabs?.query && act.value) {
           try {
-            const parsedId = parseInt(act.value, 10);
-            if (!isNaN(parsedId) && parsedId > 0) {
-              await chrome.tabs.update(parsedId, { active: true });
-              const settledUrl = await this.waitForTabSettled(parsedId, '');
-              if (settledUrl) this.lastKnownUrl = settledUrl;
-              executedTraces.push({ action: act, timestamp: Date.now(), success: true });
-            } else {
-              const allTabs = await chrome.tabs.query({});
-              const match = allTabs.find((t) => (t.url || '').includes(act.value!) || (t.title || '').toLowerCase().includes(act.value!.toLowerCase()));
-              if (match?.id) {
-                await chrome.tabs.update(match.id, { active: true });
-                const settledUrl = await this.waitForTabSettled(match.id, '');
-                if (settledUrl) this.lastKnownUrl = settledUrl;
-                executedTraces.push({ action: act, timestamp: Date.now(), success: true });
-              } else {
-                throw new Error(`No matching tab found for "${act.value}"`);
-              }
+            const tabs = await chrome.tabs.query({});
+            const q = act.value.toLowerCase();
+            const matched = tabs.find(
+              (t) =>
+                String(t.id) === q ||
+                (t.url && t.url.toLowerCase().includes(q)) ||
+                (t.title && t.title.toLowerCase().includes(q))
+            );
+            if (matched?.id) {
+              await chrome.tabs.update(matched.id, { active: true });
+              this.state.tabId = matched.id;
+              tabId = matched.id;
             }
-          } catch (switchErr) {
-            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(switchErr) });
-            abortedEarly = true;
-            abortReason = 'action_failed';
-            break;
+            executedTraces.push({ action: act, timestamp: Date.now(), success: true });
+          } catch (swErr) {
+            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(swErr) });
           }
         } else {
           executedTraces.push({ action: act, timestamp: Date.now(), success: true });
         }
-        if (i < actions.length - 1) {
-          abortedEarly = true;
-          abortReason = 'url_changed';
-          break;
-        }
+      } else if (act.id !== undefined && (this.frameElementMap.has(act.id) || act.id >= 1000)) {
+        // Target an embedded SCORM / LMS iframe
+        const frameTarget = this.frameElementMap.get(act.id);
+        const frameId = frameTarget
+          ? frameTarget.frameId
+          : Math.floor(act.id / (act.id >= SUBFRAME_ID_MULTIPLIER ? SUBFRAME_ID_MULTIPLIER : 1000));
+        const localId = frameTarget
+          ? frameTarget.localId
+          : act.id % (act.id >= SUBFRAME_ID_MULTIPLIER ? SUBFRAME_ID_MULTIPLIER : 1000);
+        const ok = await this.executeSubframeAction(tabId, frameId, localId, act);
+        executedTraces.push({ action: act, timestamp: Date.now(), success: ok });
       } else {
         domActions.push(act);
       }
@@ -1029,124 +985,6 @@ export class AgentStateMachine {
     }
 
     if (typeof chrome !== 'undefined' && tabId > 0) {
-      // Check if any action targets a registered child frame (NetAcad SCORM / LMS player)
-      const hasChildFrameAction = domActions.some(
-        (act) => act.id !== undefined && this.frameElementMap.has(act.id)
-      );
-
-      if (hasChildFrameAction && chrome.scripting?.executeScript) {
-        for (const act of domActions) {
-          if (act.id !== undefined && this.frameElementMap.has(act.id)) {
-            const frameTarget = this.frameElementMap.get(act.id)!;
-            try {
-              const frameExecRes = await chrome.scripting.executeScript({
-                target: { tabId, frameIds: [frameTarget.frameId] },
-                func: (actionToExec) => {
-                  const winAny = window as any;
-                  const reg: Map<number, HTMLElement> | undefined = winAny.__vision_ai_registry__;
-                  const targetEl = reg ? reg.get(actionToExec.id) : null;
-                  if (!targetEl) {
-                    return { success: false, error: `Element [${actionToExec.id}] not found in child frame registry` };
-                  }
-
-                  try {
-                    if (actionToExec.type === 'click') {
-                      try { targetEl.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
-                      targetEl.focus();
-                      const rect = targetEl.getBoundingClientRect();
-                      const clientX = rect.left + rect.width / 2;
-                      const clientY = rect.top + rect.height / 2;
-                      const eventInit = { bubbles: true, cancelable: true, composed: true, clientX, clientY, button: 0, buttons: 1 };
-                      targetEl.dispatchEvent(new PointerEvent('pointerover', eventInit));
-                      targetEl.dispatchEvent(new MouseEvent('mouseover', eventInit));
-                      targetEl.dispatchEvent(new PointerEvent('pointerdown', eventInit));
-                      targetEl.dispatchEvent(new MouseEvent('mousedown', eventInit));
-                      targetEl.dispatchEvent(new PointerEvent('pointerup', eventInit));
-                      targetEl.dispatchEvent(new MouseEvent('mouseup', eventInit));
-                      targetEl.click();
-                    } else if (actionToExec.type === 'fill') {
-                      try { targetEl.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
-                      targetEl.focus();
-                      if (targetEl instanceof HTMLInputElement || targetEl instanceof HTMLTextAreaElement) {
-                        const proto = targetEl instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
-                        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-                        if (setter) setter.call(targetEl, actionToExec.value || '');
-                        else targetEl.value = actionToExec.value || '';
-                        targetEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-                        targetEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-                      } else {
-                        targetEl.textContent = actionToExec.value || '';
-                        targetEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-                      }
-                    } else if (actionToExec.type === 'complete_media') {
-                      const mediaEls = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'));
-                      for (const media of mediaEls) {
-                        try {
-                          if (isFinite(media.duration) && media.duration > 0) {
-                            media.currentTime = Math.max(0, media.duration - 0.5);
-                          }
-                          media.playbackRate = 2.0;
-                          media.dispatchEvent(new Event('timeupdate', { bubbles: true }));
-                          media.dispatchEvent(new Event('ended', { bubbles: true }));
-                        } catch {}
-                      }
-                    } else if (actionToExec.type === 'scroll') {
-                      window.scrollBy({ top: actionToExec.value === 'up' ? -window.innerHeight * 0.7 : window.innerHeight * 0.7, behavior: 'smooth' });
-                    }
-                    return { success: true };
-                  } catch (e) {
-                    return { success: false, error: String(e) };
-                  }
-                },
-                args: [{ ...act, id: frameTarget.localId }],
-              });
-
-              const ok = Boolean(frameExecRes?.[0]?.result?.success);
-              const errMsg = frameExecRes?.[0]?.result?.error;
-              executedTraces.push({ action: act, timestamp: Date.now(), success: ok, error: errMsg });
-              if (!ok) {
-                abortedEarly = true;
-                abortReason = 'action_failed';
-                break;
-              }
-            } catch (frameErr) {
-              executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(frameErr) });
-              abortedEarly = true;
-              abortReason = 'action_failed';
-              break;
-            }
-          } else {
-            // Main frame action
-            try {
-              const res = (await chrome.tabs.sendMessage(tabId, {
-                type: 'EXECUTE_MACRO',
-                actions: [act],
-              })) as Partial<MacroExecutionResult> | undefined;
-              if (res?.executedTraces?.[0]) {
-                executedTraces.push(res.executedTraces[0]);
-                if (!res.executedTraces[0].success) {
-                  abortedEarly = true;
-                  abortReason = 'action_failed';
-                  break;
-                }
-              } else {
-                executedTraces.push({ action: act, timestamp: Date.now(), success: true });
-              }
-            } catch {
-              executedTraces.push({ action: act, timestamp: Date.now(), success: true });
-            }
-          }
-        }
-
-        return {
-          totalActions: actions.length,
-          executedActions: executedTraces.filter((t) => t.success).length,
-          abortedEarly,
-          abortReason,
-          executedTraces,
-        };
-      }
-
       if (chrome.tabs?.sendMessage) {
         try {
           const res = (await chrome.tabs.sendMessage(tabId, {
@@ -1168,126 +1006,10 @@ export class AgentStateMachine {
             };
           }
         } catch (err) {
-          console.warn('[AgentStateMachine] Content script macro execution failed, attempting in-page execution:', err);
-        }
-      }
-
-      // In-page execution fallback via chrome.scripting.executeScript
-      if (chrome.scripting?.executeScript) {
-        try {
-          const results = await chrome.scripting.executeScript({
-            target: { tabId },
-            func: (actionsToExec) => {
-              const winAny = window as any;
-              const reg: Map<number, HTMLElement> | undefined = winAny.__vision_ai_registry__;
-              const traces: any[] = [];
-
-              let lastTargetEl: HTMLElement | null = null;
-
-              for (const act of actionsToExec) {
-                let targetEl: HTMLElement | null = null;
-                if (act.id !== undefined && reg) {
-                  targetEl = reg.get(act.id) || null;
-                } else if (act.type === 'press' && lastTargetEl && lastTargetEl.isConnected) {
-                  targetEl = lastTargetEl;
-                }
-
-                if (targetEl) {
-                  lastTargetEl = targetEl;
-                }
-
-                try {
-                  if (act.type === 'click' && targetEl) {
-                    try {
-                      targetEl.scrollIntoView({ block: 'center', inline: 'center' });
-                    } catch {}
-                    targetEl.focus();
-                    targetEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                    targetEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                    targetEl.click();
-                  } else if (act.type === 'fill' && targetEl) {
-                    try {
-                      targetEl.scrollIntoView({ block: 'center', inline: 'center' });
-                    } catch {}
-                    targetEl.focus();
-                    if (targetEl instanceof HTMLInputElement || targetEl instanceof HTMLTextAreaElement) {
-                      const proto =
-                        targetEl instanceof HTMLInputElement
-                          ? HTMLInputElement.prototype
-                          : HTMLTextAreaElement.prototype;
-                      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-                      if (setter) setter.call(targetEl, act.value || '');
-                      else targetEl.value = act.value || '';
-                      targetEl.dispatchEvent(new Event('input', { bubbles: true }));
-                      targetEl.dispatchEvent(new Event('change', { bubbles: true }));
-                    } else {
-                      targetEl.textContent = act.value || '';
-                      targetEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                  } else if (act.type === 'press') {
-                    const key = act.value || 'Enter';
-                    const keyCode = key === 'Enter' ? 13 : key === 'Tab' ? 9 : key === 'Escape' ? 27 : key === 'Backspace' ? 8 : 0;
-                    const active = targetEl || lastTargetEl || document.activeElement || document.body;
-
-                    const eventInit = { key, code: key, bubbles: true, cancelable: true, composed: true };
-                    const kd = new KeyboardEvent('keydown', eventInit);
-                    Object.defineProperty(kd, 'keyCode', { get: () => keyCode });
-                    Object.defineProperty(kd, 'which', { get: () => keyCode });
-                    active.dispatchEvent(kd);
-
-                    const kp = new KeyboardEvent('keypress', eventInit);
-                    Object.defineProperty(kp, 'keyCode', { get: () => keyCode });
-                    Object.defineProperty(kp, 'which', { get: () => keyCode });
-                    active.dispatchEvent(kp);
-
-                    const ku = new KeyboardEvent('keyup', eventInit);
-                    Object.defineProperty(ku, 'keyCode', { get: () => keyCode });
-                    Object.defineProperty(ku, 'which', { get: () => keyCode });
-                    active.dispatchEvent(ku);
-
-                    if (key === 'Enter') {
-                      const form = active instanceof HTMLInputElement ? active.form : (active.closest ? active.closest('form') : null);
-                      if (form) {
-                        try {
-                          form.requestSubmit ? form.requestSubmit() : form.submit();
-                        } catch {}
-                      }
-                    }
-                  } else if (act.type === 'scroll') {
-                    window.scrollBy({ top: act.value === 'up' ? -window.innerHeight * 0.7 : window.innerHeight * 0.7, behavior: 'smooth' });
-                  }
-                  traces.push({ action: act, timestamp: Date.now(), success: true });
-                } catch (actionErr) {
-                  traces.push({ action: act, timestamp: Date.now(), success: false, error: String(actionErr) });
-                }
-              }
-
-              return {
-                totalActions: actionsToExec.length,
-                executedActions: traces.filter((t) => t.success).length,
-                abortedEarly: false,
-                executedTraces: traces,
-              };
-            },
-            args: [domActions],
-          });
-
-          if (results && results[0]?.result) {
-            const rawRes = results[0].result as MacroExecutionResult;
-            const domTraces = Array.isArray(rawRes.executedTraces)
-              ? rawRes.executedTraces
-              : domActions.map((act) => ({ action: act, timestamp: Date.now(), success: true }));
-            const combinedTraces = [...executedTraces, ...domTraces];
-            return {
-              totalActions: actions.length,
-              executedActions: combinedTraces.filter((t) => t.success).length,
-              abortedEarly: rawRes.abortedEarly ?? false,
-              abortReason: rawRes.abortReason,
-              executedTraces: combinedTraces,
-            };
-          }
-        } catch (execErr) {
-          console.warn('[AgentStateMachine] In-page action execution error:', execErr);
+          console.warn(
+            '[AgentStateMachine] Content script macro execution failed, attempting in-page execution:',
+            err
+          );
         }
       }
     }
@@ -1308,3 +1030,4 @@ export class AgentStateMachine {
     };
   }
 }
+

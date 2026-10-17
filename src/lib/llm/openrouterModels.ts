@@ -148,7 +148,7 @@ export async function fetchLiveOpenRouterModels(
             models: parsed,
           },
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     return parsed.length > 0 ? parsed : FALLBACK_OPENROUTER_MODELS;

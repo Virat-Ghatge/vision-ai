@@ -77,9 +77,9 @@ export interface ProviderApiKeys {
 
 export interface RouterConfig {
   apiKeys: ProviderApiKeys;
-  tier0Model?: string; // e.g. "llama3.2:latest"
-  tier1Model?: string; // e.g. "llama-3.3-70b-versatile" or "gemini-2.5-flash"
-  tier2Model?: string; // e.g. "claude-3-7-sonnet-20250219" or "gemini-2.5-pro"
+  tier0Model?: string;
+  tier1Model?: string;
+  tier2Model?: string;
   preferredTier1Provider?: 'groq' | 'gemini' | 'openrouter';
   preferredTier2Provider?: 'anthropic' | 'gemini' | 'openrouter';
   openRouterModel?: string;
@@ -111,3 +111,4 @@ export interface LLMProvider {
   chat(messages: ChatMessage[], options?: LLMRequestOptions): Promise<AgentPlanResponse>;
   rawChat?(messages: ChatMessage[], options?: LLMRequestOptions): Promise<string>;
 }
+
