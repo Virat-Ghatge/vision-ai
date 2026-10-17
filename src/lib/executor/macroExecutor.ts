@@ -23,27 +23,32 @@ export function highlightTarget(el: HTMLElement): void {
   if (!el || typeof el.style === 'undefined') return;
   const originalOutline = el.style.outline;
   const originalOffset = el.style.outlineOffset;
-  el.style.outline = '2px solid #39d353';
+  const originalBoxShadow = el.style.boxShadow;
+  // Marvel's Vision Mind Stone gold + Android teal spotlight
+  el.style.outline = '2px solid #fbbf24';
   el.style.outlineOffset = '2px';
+  el.style.boxShadow = '0 0 14px rgba(251, 191, 36, 0.75)';
   setTimeout(() => {
     try {
       el.style.outline = originalOutline;
       el.style.outlineOffset = originalOffset;
+      el.style.boxShadow = originalBoxShadow;
     } catch {}
-  }, 350);
+  }, 450);
 }
 
 /**
- * Dispatches a complete PointerEvent + MouseEvent sequence with composed: true
- * so React 18/19, React Aria (Coursera), Material UI, and Shadow DOM (Cisco NetAcad)
- * components reliably trigger their click handlers.
+ * Dispatches a realistic PointerEvent + MouseEvent sequence with composed: true
+ * for React Aria (Coursera), Material UI, and Shadow DOM (Cisco NetAcad).
  */
 export function dispatchRealisticClick(el: HTMLElement): void {
   try {
     el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
   } catch {}
 
-  const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 10, top: 10, width: 20, height: 20 };
+  const rect = el.getBoundingClientRect
+    ? el.getBoundingClientRect()
+    : { left: 10, top: 10, width: 20, height: 20 };
   const clientX = Math.round(rect.left + (rect.width || 20) / 2);
   const clientY = Math.round(rect.top + (rect.height || 20) / 2);
 
@@ -60,7 +65,9 @@ export function dispatchRealisticClick(el: HTMLElement): void {
 
   if (typeof PointerEvent !== 'undefined') {
     el.dispatchEvent(new PointerEvent('pointerover', { ...eventOpts, pointerId: 1, isPrimary: true }));
-    el.dispatchEvent(new PointerEvent('pointerenter', { ...eventOpts, bubbles: false, pointerId: 1, isPrimary: true }));
+    el.dispatchEvent(
+      new PointerEvent('pointerenter', { ...eventOpts, bubbles: false, pointerId: 1, isPrimary: true })
+    );
     el.dispatchEvent(new PointerEvent('pointerdown', { ...eventOpts, pointerId: 1, isPrimary: true }));
   }
 
@@ -71,17 +78,23 @@ export function dispatchRealisticClick(el: HTMLElement): void {
   } catch {}
 
   if (typeof PointerEvent !== 'undefined') {
-    el.dispatchEvent(new PointerEvent('pointerup', { ...eventOpts, buttons: 0, pointerId: 1, isPrimary: true }));
+    el.dispatchEvent(
+      new PointerEvent('pointerup', { ...eventOpts, buttons: 0, pointerId: 1, isPrimary: true })
+    );
   }
 
   el.dispatchEvent(new MouseEvent('mouseup', { ...eventOpts, buttons: 0 }));
-  el.click();
+
+  // If element is wrapped inside an <a> or <button>, ensure the interactive element receives the click
+  const clickableTarget =
+    el.tagName === 'A' || el.tagName === 'BUTTON' || el.tagName === 'INPUT'
+      ? el
+      : (el.closest?.('a, button, [role="button"], [role="link"], [role="checkbox"]') as HTMLElement | null) ||
+        el;
+
+  clickableTarget.click();
 }
 
-/**
- * Scrolls both the main window AND inner scrollable containers (like Coursera's
- * lecture pane & curriculum sidebar or NetAcad's lesson container).
- */
 export function smartScroll(
   direction: 'up' | 'down',
   targetEl?: HTMLElement | null,
@@ -89,7 +102,6 @@ export function smartScroll(
 ): void {
   const deltaY = direction === 'down' ? amount : -amount;
 
-  // 1. If a specific element was passed, scroll its nearest scrollable ancestor
   if (targetEl) {
     let cur: HTMLElement | null = targetEl;
     while (cur) {
@@ -104,7 +116,6 @@ export function smartScroll(
     }
   }
 
-  // 2. Scroll main window
   if (typeof window !== 'undefined') {
     try {
       window.scrollBy({ top: deltaY, behavior: 'instant' });
@@ -113,7 +124,6 @@ export function smartScroll(
     }
   }
 
-  // 3. Find and scroll the top 2 largest inner scrollable containers in the DOM / Shadow DOM
   if (typeof document !== 'undefined' && document.body) {
     const allNodes = collectAllElementsDeep(document.body, 2500);
     const scrollables: Array<{ el: HTMLElement; area: number }> = [];
@@ -130,7 +140,7 @@ export function smartScroll(
     }
 
     scrollables.sort((a, b) => b.area - a.area);
-    for (const item of scrollables.slice(0, 2)) {
+    for (const item of scrollables.slice(0, 3)) {
       item.el.scrollTop += deltaY;
       try {
         item.el.scrollBy({ top: deltaY, behavior: 'instant' });
@@ -139,10 +149,6 @@ export function smartScroll(
   }
 }
 
-/**
- * Fast-forwards and dispatches completion events on HTML5 <video> and <audio> elements
- * so LMS platforms (Coursera, NetAcad) register lecture media progress.
- */
 export async function completePageMedia(targetEl?: HTMLElement | null): Promise<void> {
   if (typeof document === 'undefined' || !document.body) return;
   const allElements = collectAllElementsDeep(document.body, 2500);
@@ -205,9 +211,15 @@ export function getElementSelector(el: HTMLElement): string {
     return `[data-testid="${esc}"]`;
   }
   if (el.className && typeof el.className === 'string') {
-    const classes = el.className.trim().split(/\s+/).filter((c) => !c.includes(':') && !c.includes('/'));
+    const classes = el.className
+      .trim()
+      .split(/\s+/)
+      .filter((c) => !c.includes(':') && !c.includes('/'));
     if (classes.length > 0) {
-      return `${el.tagName.toLowerCase()}.${classes.slice(0, 2).map((c) => (CSS?.escape ? CSS.escape(c) : c)).join('.')}`;
+      return `${el.tagName.toLowerCase()}.${classes
+        .slice(0, 2)
+        .map((c) => (CSS?.escape ? CSS.escape(c) : c))
+        .join('.')}`;
     }
   }
   return el.tagName.toLowerCase();
@@ -240,7 +252,7 @@ export class MacroBatchExecutor {
     this.registry = options?.registry ?? globalElementRegistry;
     this.actuator = options?.actuator;
     this.deltaTracker = options?.deltaTracker;
-    this.debounceMs = options?.debounceMs ?? 120;
+    this.debounceMs = options?.debounceMs ?? 140;
     this.getCurrentUrl =
       options?.getCurrentUrl ??
       (() => (typeof window !== 'undefined' ? window.location.href : ''));

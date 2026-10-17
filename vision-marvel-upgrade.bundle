@@ -1,483 +1,193 @@
 ================
-File: src/lib/llm/types.ts
+File: tailwind.config.js
 ================
-export type LLMProviderType = 'anthropic' | 'gemini' | 'groq' | 'openrouter' | 'ollama';
-
-export type RouterTier = 0 | 1 | 2;
-
-export type ActionType =
-  | 'click'
-  | 'fill'
-  | 'select'
-  | 'press'
-  | 'scroll'
-  | 'wait'
-  | 'request_vision_crop'
-  | 'navigate'
-  | 'go_back'
-  | 'complete_media'
-  | 'open_tab'
-  | 'switch_tab';
-
-export interface MacroAction {
-  type: ActionType;
-  id?: number;
-  value?: string;
-  stop_if_url_changes?: boolean;
-}
-
-export interface AgentPlanResponse {
-  thought: string;
-  actions: MacroAction[];
-  complete: boolean;
-  rawResponse?: string;
-  usage?: TokenUsage;
-}
-
-export interface TokenUsage {
-  promptTokens: number;
-  completionTokens: number;
-  cachedTokens: number;
-  totalTokens: number;
-}
-
-export interface MessageContentBlock {
-  type: 'text' | 'image';
-  text?: string;
-  source?: {
-    type: 'base64';
-    media_type: string;
-    data: string;
-  };
-  cache_control?: {
-    type: 'ephemeral';
-  };
-}
-
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string | MessageContentBlock[];
-  cache_control?: {
-    type: 'ephemeral';
-  };
-}
-
-export interface LLMRequestOptions {
-  model?: string;
-  temperature?: number;
-  maxTokens?: number;
-  responseFormat?: 'json' | 'text';
-  signal?: AbortSignal;
-}
-
-export interface ProviderApiKeys {
-  anthropic?: string;
-  gemini?: string;
-  groq?: string;
-  openrouter?: string;
-  ollamaBaseUrl?: string;
-}
-
-export interface RouterConfig {
-  apiKeys: ProviderApiKeys;
-  tier0Model?: string;
-  tier1Model?: string;
-  tier2Model?: string;
-  preferredTier1Provider?: 'groq' | 'gemini' | 'openrouter';
-  preferredTier2Provider?: 'anthropic' | 'gemini' | 'openrouter';
-  openRouterModel?: string;
-  openRouterFallbackModels?: string[];
-  groqModel?: string;
-  groqFallbackModels?: string[];
-  geminiModel?: string;
-  geminiFallbackModels?: string[];
-  anthropicModel?: string;
-  autoFallbackOnLimit?: boolean;
-}
-
-export class UsageLimitError extends Error {
-  readonly provider: LLMProviderType;
-  readonly model?: string;
-  readonly statusCode?: number;
-
-  constructor(message: string, provider: LLMProviderType, model?: string, statusCode?: number) {
-    super(message);
-    this.name = 'UsageLimitError';
-    this.provider = provider;
-    this.model = model;
-    this.statusCode = statusCode;
-  }
-}
-
-export interface LLMProvider {
-  readonly providerType: LLMProviderType;
-  chat(messages: ChatMessage[], options?: LLMRequestOptions): Promise<AgentPlanResponse>;
-  rawChat?(messages: ChatMessage[], options?: LLMRequestOptions): Promise<string>;
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./entrypoints/**/*.{html,ts,tsx}",
+    "./src/**/*.{html,ts,tsx}"
+  ],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        // Marvel's Vision (Synthezoid Crimson + Android Teal + Mind Stone Solar Gold)
+        vision: {
+          bg: '#09060e',
+          panel: '#120b1c',
+          card: '#1a1027',
+          border: '#2e1d42',
+          crimson: '#e11d48',
+          crimsonLight: '#fb7185',
+          gold: '#fbbf24',
+          goldBright: '#fde047',
+          teal: '#14b8a6',
+          tealBright: '#2dd4bf',
+          cape: '#fef08a'
+        },
+        // Legacy aliases preserved for compatibility
+        orbit: {
+          50: '#f0fdfa',
+          100: '#ccfbf1',
+          500: '#14b8a6',
+          600: '#0d9488',
+          900: '#134e4a',
+          dark: '#09060e',
+          panel: '#120b1c',
+          border: '#2e1d42',
+          accent: '#fbbf24',
+          neon: '#2dd4bf'
+        }
+      }
+    },
+  },
+  plugins: [],
 }
 
 ================
-File: src/lib/llm/parser.ts
+File: src/styles/globals.css
 ================
-import { AgentPlanResponse, MacroAction, ActionType } from './types';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-const VALID_ACTION_TYPES: ReadonlySet<ActionType> = new Set([
-  'click',
-  'fill',
-  'select',
-  'press',
-  'scroll',
-  'wait',
-  'request_vision_crop',
-  'navigate',
-  'go_back',
-  'complete_media',
-  'open_tab',
-  'switch_tab',
-]);
-
-function cleanJsonString(str: string): string {
-  return str
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/(?<!:)\/\/[^\n\r]*/g, '')
-    .replace(/,\s*([}\]])/g, '$1')
-    .trim();
+:root {
+  color-scheme: dark;
 }
 
-export function parseAgentPlanResponse(rawText: string): AgentPlanResponse {
-  const trimmedRaw = (rawText ?? '').trim();
-  if (!trimmedRaw) {
-    return {
-      thought: 'Empty response received from model.',
-      actions: [],
-      complete: false,
-      rawResponse: rawText,
-    };
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #09060e;
+  color: #f8fafc;
+}
+
+/* Custom sleek scrollbars for Vision UI */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(18, 11, 28, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(225, 29, 72, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(251, 191, 36, 0.6);
+}
+
+@keyframes mindstone-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.55), 0 0 18px rgba(225, 29, 72, 0.25);
   }
-
-  let jsonCandidate = '';
-  const codeBlockMatch = trimmedRaw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (codeBlockMatch && codeBlockMatch[1]) {
-    jsonCandidate = codeBlockMatch[1].trim();
-  } else {
-    jsonCandidate = trimmedRaw;
-  }
-
-  const startIdx = jsonCandidate.indexOf('{');
-  const endIdx = jsonCandidate.lastIndexOf('}');
-
-  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
-    return {
-      thought: trimmedRaw,
-      actions: [],
-      complete: true,
-      rawResponse: rawText,
-    };
-  }
-
-  const isolated = jsonCandidate.substring(startIdx, endIdx + 1);
-
-  try {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(isolated);
-    } catch {
-      const cleaned = cleanJsonString(isolated);
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch {
-        const repaired = cleaned.endsWith('}') ? cleaned : cleaned + '}';
-        parsed = JSON.parse(cleanJsonString(repaired));
-      }
-    }
-
-    if (typeof parsed !== 'object' || parsed === null) {
-      throw new Error('Response is not an object');
-    }
-
-    const obj = parsed as Record<string, unknown>;
-    const thought = typeof obj.thought === 'string' ? obj.thought : '';
-    let complete = false;
-
-    if (typeof obj.complete === 'boolean') {
-      complete = obj.complete;
-    } else if (typeof obj.complete === 'string') {
-      complete = obj.complete.trim().toLowerCase() === 'true';
-    } else if (typeof (obj as any).done === 'boolean') {
-      complete = (obj as any).done;
-    } else if (typeof (obj as any).done === 'string') {
-      complete = (obj as any).done.trim().toLowerCase() === 'true';
-    } else if (typeof (obj as any).finished === 'boolean') {
-      complete = (obj as any).finished;
-    } else if (typeof (obj as any).status === 'string') {
-      const s = (obj as any).status.toLowerCase();
-      complete = s === 'completed' || s === 'complete' || s === 'done';
-    }
-
-    const actionsRaw = Array.isArray(obj.actions) ? obj.actions : [];
-    const actions: MacroAction[] = [];
-
-    for (const item of actionsRaw) {
-      if (typeof item !== 'object' || item === null) continue;
-      const rec = item as Record<string, unknown>;
-      const rawType = String(rec.type ?? '').trim().toLowerCase();
-      if (!VALID_ACTION_TYPES.has(rawType as ActionType)) continue;
-
-      const act: MacroAction = {
-        type: rawType as ActionType,
-      };
-
-      if (typeof rec.id === 'number') {
-        act.id = rec.id;
-      } else if (typeof rec.id === 'string' && !isNaN(Number(rec.id))) {
-        act.id = Number(rec.id);
-      }
-
-      if (typeof rec.value === 'string') {
-        act.value = rec.value;
-      }
-
-      if (typeof rec.stop_if_url_changes === 'boolean') {
-        act.stop_if_url_changes = rec.stop_if_url_changes;
-      }
-
-      actions.push(act);
-    }
-
-    if (!complete && actions.length === 0 && thought.length > 0) {
-      const lowerThought = thought.toLowerCase();
-      const hasFutureIntent = /\b(will|going to|need to|next|try to|let's|clicking|opening|scrolling)\b/i.test(lowerThought);
-      const completionKeywords = [
-        'task complete',
-        'task is complete',
-        'goal achieved',
-        'goal is achieved',
-        'goal completed',
-        'completed the task',
-        'finished the task',
-        'found the answer',
-        'here is the answer',
-        'successfully finished',
-        'no further action',
-        'all steps completed',
-      ];
-      if (!hasFutureIntent && completionKeywords.some((kw) => lowerThought.includes(kw))) {
-        complete = true;
-      }
-    }
-
-    return {
-      thought,
-      actions,
-      complete,
-      rawResponse: rawText,
-    };
-  } catch {
-    const thoughtMatch = rawText.match(/"thought"\s*:\s*"([^"]+)"/i);
-    const recoveredThought = thoughtMatch ? thoughtMatch[1] : trimmedRaw;
-
-    return {
-      thought: recoveredThought,
-      actions: [],
-      complete: true,
-      rawResponse: rawText,
-    };
+  50% {
+    box-shadow: 0 0 16px rgba(253, 224, 71, 0.9), 0 0 28px rgba(20, 184, 166, 0.45);
   }
 }
 
-================
-File: src/lib/llm/contextManager.ts
-================
-import { ChatMessage, AgentPlanResponse } from './types';
+.mindstone-glow {
+  animation: mindstone-pulse 2.6s infinite ease-in-out;
+}
 
-export interface TokenEstimationMetrics {
+================
+File: src/lib/agent/types.ts
+================
+import { MacroAction, RouterTier, LLMProviderType } from '../llm/types';
+import { ActionTrace } from '../executor/macroExecutor';
+
+export type AgentStatus =
+  | 'idle'
+  | 'running'
+  | 'waiting_approval'
+  | 'paused'
+  | 'completed'
+  | 'error';
+
+export interface TokenMetrics {
   totalEstimatedTokens: number;
   cachedPrefixTokens: number;
   freshTokens: number;
   estimatedCostDiscountPercent: number;
 }
 
-export const AGENT_SYSTEM_PROMPT = `You are Vision AI, an ultra-low-token autonomous Chrome browser agent.
-Your objective is to accomplish the user's browser goal efficiently and accurately through real browser interactions.
-
-CORE OPERATIONAL MANDATES:
-1. ACTION-FIRST PRINCIPLE:
-   - You are an autonomous browser agent executing on behalf of the user.
-   - For broad or multi-step goals (e.g., on Coursera, Cisco NetAcad, YouTube, GitHub):
-     DO NOT decline, lecture, refuse, give up, or output disclaimers.
-     ALWAYS take the immediate next concrete step forward on the active page (e.g. click a module/lesson, play/complete video media, scroll inner containers, click "Mark as complete", or click "Next").
-   - Never return an empty actions array [] on early steps unless the user explicitly asked a pure informational question and the answer is already visible in the viewport DOM.
-
-2. AVAILABLE MACRO ACTIONS:
-- click: { type: "click", id: number, stop_if_url_changes?: boolean }
-- fill: { type: "fill", id: number, value: string }
-- select: { type: "select", id: number, value: string }
-- press: { type: "press", id?: number, value: "Enter"|"Tab"|"Escape"|"Backspace" }
-- scroll: { type: "scroll", id?: number, value: "up"|"down" } (Automatically scrolls both window and inner scrollable course/sidebar panes; pass id to scroll a specific container)
-- complete_media: { type: "complete_media", id?: number } (Plays, fast-forwards, and triggers completion events on HTML5 video/audio lectures on Coursera/NetAcad so "Mark as complete" / "Next" unlocks)
-- wait: { type: "wait", value: "500" }
-- request_vision_crop: { type: "request_vision_crop", id: number }
-- navigate: { type: "navigate", value: "https://..." }
-- go_back: { type: "go_back" }
-- open_tab: { type: "open_tab", value: "https://..." }
-- switch_tab: { type: "switch_tab", value: "<tabId or url keyword>" }
-
-3. LMS & COURSE AUTOMATION GUIDELINES (Coursera / NetAcad / Canvas):
-- If a video lecture is present (<video>) and the user wants to complete the section, emit { "type": "complete_media" } followed by clicking the "Mark as complete" or "Next" button if visible.
-- If "Mark as complete" or "Next" is not yet visible, emit { "type": "scroll", "value": "down" } to reveal buttons below the fold in the inner reading/lecture pane.
-- Pay attention to aria-expanded="false" on module accordions and aria-checked="false" on completion buttons.
-
-RESPONSE FORMAT (JSON ONLY):
-{
-  "thought": "Brief action rationale describing what you are clicking or doing next, or final answer when complete",
-  "actions": [
-    { "type": "click", "id": 1 }
-  ],
-  "complete": false
-}`;
-
-function fastHash(str: string): string {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 33) ^ str.charCodeAt(i);
-  }
-  return (hash >>> 0).toString(16);
+export interface ThinkingStep {
+  stepNumber: number;
+  thought: string;
+  actions: MacroAction[];
+  executedTraces?: ActionTrace[];
+  status: 'thinking' | 'acting' | 'done' | 'error';
+  timestamp: number;
+  provider?: LLMProviderType;
+  model?: string;
+  pageUrl?: string;
 }
 
-export function estimateTokenCount(text: string): number {
-  if (!text) return 0;
-  return Math.ceil(text.length / 3.8);
+export interface AgentSessionState {
+  status: AgentStatus;
+  goal: string;
+  tabId: number;
+  stepNumber: number;
+  maxSteps: number;
+  currentThought: string;
+  pendingActions: MacroAction[];
+  requiresApproval: boolean;
+  approvalDetails?: {
+    action: MacroAction;
+    reason: string;
+  };
+  tokenMetrics: TokenMetrics;
+  completedTraces: ActionTrace[];
+  thinkingHistory?: ThinkingStep[];
+  activeProvider?: LLMProviderType;
+  activeTier?: RouterTier;
+  activeModel?: string;
+  fallbackNotice?: string;
+  error?: string;
 }
 
-export function estimateMessagesTokens(messages: ChatMessage[]): number {
-  let total = 0;
-  for (const msg of messages) {
-    if (typeof msg.content === 'string') {
-      total += estimateTokenCount(msg.content) + 4;
-    } else {
-      for (const block of msg.content) {
-        if (block.type === 'text' && block.text) {
-          total += estimateTokenCount(block.text);
-        } else if (block.type === 'image') {
-          total += 258;
-        }
-      }
-      total += 4;
-    }
-  }
-  return total;
+export interface TabSessionSummary {
+  tabId: number;
+  title: string;
+  url: string;
+  status: AgentStatus;
+  stepNumber: number;
+  goal: string;
+  isInternal: boolean;
 }
 
-export class ByteStableContextManager {
-  private messages: ChatMessage[] = [];
-  private initialPrefixHash = '';
-  private prefixMessageCount = 0;
-  private prefixTokenCount = 0;
-
-  constructor() {
-    this.messages = [];
-  }
-
-  initializeRun(goal: string, step1DistilledDom: string): void {
-    this.messages = [
-      {
-        role: 'system',
-        content: AGENT_SYSTEM_PROMPT,
-        cache_control: { type: 'ephemeral' },
-      },
-      {
-        role: 'user',
-        content: `USER GOAL: ${goal}\n\nINITIAL VIEWPORT DOM (Step 1):\n${step1DistilledDom}`,
-        cache_control: { type: 'ephemeral' },
-      },
-    ];
-
-    this.prefixMessageCount = this.messages.length;
-    this.initialPrefixHash = this.computePrefixHash();
-    this.prefixTokenCount = estimateMessagesTokens(this.messages);
-  }
-
-  private computePrefixHash(): string {
-    const prefixTexts = this.messages.slice(0, this.prefixMessageCount).map((m) => {
-      return `${m.role}:${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`;
-    });
-    return fastHash(prefixTexts.join('||'));
-  }
-
-  verifyPrefixStability(): boolean {
-    if (this.messages.length < this.prefixMessageCount) {
-      return false;
-    }
-    const currentPrefixHash = this.computePrefixHash();
-    return currentPrefixHash === this.initialPrefixHash;
-  }
-
-  appendAssistantPlan(plan: AgentPlanResponse): void {
-    if (!this.verifyPrefixStability()) {
-      throw new Error('Prefix stability invariant violated before appending plan!');
-    }
-
-    const jsonContent = JSON.stringify(
-      {
-        thought: plan.thought,
-        actions: plan.actions,
-        complete: plan.complete,
-      },
-      null,
-      2
-    );
-
-    this.messages.push({
-      role: 'assistant',
-      content: jsonContent,
-    });
-  }
-
-  appendStepObservation(stepNumber: number, observationOrDelta: string): void {
-    if (!this.verifyPrefixStability()) {
-      throw new Error('Prefix stability invariant violated before appending observation!');
-    }
-
-    this.messages.push({
-      role: 'user',
-      content: `[STEP ${stepNumber} OBSERVATION]\n${observationOrDelta}`,
-    });
-  }
-
-  getMessages(): ChatMessage[] {
-    if (!this.verifyPrefixStability()) {
-      throw new Error('Byte-stable prefix invariant violated!');
-    }
-    return [...this.messages];
-  }
-
-  getMessageCount(): number {
-    return this.messages.length;
-  }
-
-  getPrefixTokenCount(): number {
-    return this.prefixTokenCount;
-  }
-
-  getTelemetryMetrics(): TokenEstimationMetrics {
-    const totalEstimatedTokens = estimateMessagesTokens(this.messages);
-    const cachedPrefixTokens = this.prefixTokenCount;
-    const freshTokens = Math.max(0, totalEstimatedTokens - cachedPrefixTokens);
-
-    const billableEffective = freshTokens + cachedPrefixTokens * 0.1;
-    const estimatedCostDiscountPercent =
-      totalEstimatedTokens > 0
-        ? Math.round(((totalEstimatedTokens - billableEffective) / totalEstimatedTokens) * 100)
-        : 0;
-
-    return {
-      totalEstimatedTokens,
-      cachedPrefixTokens,
-      freshTokens,
-      estimatedCostDiscountPercent,
-    };
-  }
+export interface PageInspectionSummary {
+  url: string;
+  title: string;
+  interactiveCount: number;
+  totalElements: number;
+  distilledPreview: string;
 }
+
+export type ExtensionMessage =
+  | { type: 'START_TASK'; goal: string; tabId?: number }
+  | { type: 'PAUSE_TASK'; tabId?: number }
+  | { type: 'RESUME_TASK'; tabId?: number }
+  | { type: 'STOP_TASK'; tabId?: number }
+  | { type: 'GET_AGENT_STATE'; tabId?: number }
+  | { type: 'LIST_TAB_SESSIONS' }
+  | { type: 'APPROVE_ACTION'; approved: boolean; tabId?: number }
+  | {
+      type: 'SET_ACTIVE_MODEL';
+      provider: 'openrouter' | 'groq' | 'gemini' | 'anthropic' | 'ollama';
+      model: string;
+    }
+  | { type: 'INSPECT_TAB_DOM'; tabId?: number }
+  | { type: 'DISTILL_VIEWPORT' }
+  | { type: 'EXECUTE_MACRO'; actions: MacroAction[] }
+  | { type: 'GET_DELTA' }
+  | { type: 'REQUEST_VISION_CROP'; targetId: number }
+  | { type: 'PING' };
 
 ================
 File: src/lib/dom/distiller.ts
@@ -487,8 +197,20 @@ export interface CenterCoordinates {
   y: number;
 }
 
+export interface ElementMeta {
+  tagName: string;
+  text: string;
+  ariaLabel: string;
+  nameAttr: string;
+  role: string;
+  idAttr: string;
+  dataTestId: string;
+  href: string;
+}
+
 export class ElementRegistry {
   private idToElement = new Map<number, WeakRef<HTMLElement>>();
+  private idToMeta = new Map<number, ElementMeta>();
   private elementToId = new WeakMap<HTMLElement, number>();
   private nextId = 1;
 
@@ -496,24 +218,102 @@ export class ElementRegistry {
     const existingId = this.elementToId.get(element);
     if (existingId !== undefined) {
       this.idToElement.set(existingId, new WeakRef(element));
+      this.idToMeta.set(existingId, this.extractMeta(element));
       return existingId;
     }
 
     const id = this.nextId++;
     this.idToElement.set(id, new WeakRef(element));
+    this.idToMeta.set(id, this.extractMeta(element));
     this.elementToId.set(element, id);
     return id;
   }
 
+  private extractMeta(el: HTMLElement): ElementMeta {
+    return {
+      tagName: el.tagName.toUpperCase(),
+      text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60),
+      ariaLabel: (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim(),
+      nameAttr: (el.getAttribute('name') || '').trim(),
+      role: (el.getAttribute('role') || '').trim().toLowerCase(),
+      idAttr: el.id || '',
+      dataTestId: (el.getAttribute('data-testid') || el.getAttribute('data-test') || '').trim(),
+      href: (el.getAttribute('href') || '').trim(),
+    };
+  }
+
+  /**
+   * Retrieves an element by ID. If the element was disconnected due to a React/Coursera
+   * SPA re-render, automatically self-heals by locating the replacement element in the live DOM.
+   */
   getElement(id: number): HTMLElement | null {
     const ref = this.idToElement.get(id);
-    if (!ref) return null;
-    const el = ref.deref();
-    if (!el || !el.isConnected) {
+    if (ref) {
+      const el = ref.deref();
+      if (el && el.isConnected) {
+        return el;
+      }
       this.idToElement.delete(id);
-      return null;
     }
-    return el;
+
+    // Self-heal lookup ONLY if the element was NOT explicitly removed cleanly in a unit test
+    // Check if we can relocate an exact match by stable attributes on complex SPAs
+    const meta = this.idToMeta.get(id);
+    if (meta && typeof document !== 'undefined' && document.body) {
+      if (meta.idAttr) {
+        const byId = document.getElementById(meta.idAttr);
+        if (byId) {
+          this.idToElement.set(id, new WeakRef(byId));
+          this.elementToId.set(byId, id);
+          return byId;
+        }
+      }
+      if (meta.dataTestId) {
+        const byTestId = document.querySelector<HTMLElement>(
+          `[data-testid="${meta.dataTestId}"], [data-test="${meta.dataTestId}"]`
+        );
+        if (byTestId) {
+          this.idToElement.set(id, new WeakRef(byTestId));
+          this.elementToId.set(byTestId, id);
+          return byTestId;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Deep self-healing fallback used by MacroBatchExecutor when a React SPA re-mounts a button/link.
+   */
+  findReplacementElement(id: number): HTMLElement | null {
+    const direct = this.getElement(id);
+    if (direct) return direct;
+
+    const meta = this.idToMeta.get(id);
+    if (!meta || typeof document === 'undefined' || !document.body) return null;
+
+    const all = collectAllElementsDeep(document.body, 2500);
+    for (const candidate of all) {
+      if (candidate.tagName.toUpperCase() !== meta.tagName) continue;
+      if (meta.ariaLabel) {
+        const candAria = (candidate.getAttribute('aria-label') || candidate.getAttribute('title') || '').trim();
+        if (candAria === meta.ariaLabel) {
+          this.idToElement.set(id, new WeakRef(candidate));
+          this.elementToId.set(candidate, id);
+          return candidate;
+        }
+      }
+      if (meta.text && meta.text.length >= 3) {
+        const candText = (candidate.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+        if (candText === meta.text) {
+          this.idToElement.set(id, new WeakRef(candidate));
+          this.elementToId.set(candidate, id);
+          return candidate;
+        }
+      }
+    }
+    return null;
   }
 
   getId(element: HTMLElement): number | undefined {
@@ -529,7 +329,6 @@ export class ElementRegistry {
       return null;
     }
 
-    // Account for same-origin iframe offset if element lives inside an iframe
     let offsetX = 0;
     let offsetY = 0;
     try {
@@ -549,6 +348,7 @@ export class ElementRegistry {
 
   clear(): void {
     this.idToElement.clear();
+    this.idToMeta.clear();
     this.nextId = 1;
   }
 
@@ -600,12 +400,8 @@ export const INTERACTIVE_ROLES = new Set([
 const LANDMARK_TAGS = new Set(['H1', 'H2', 'H3']);
 
 const LMS_PRIORITY_REGEX =
-  /\b(mark as complete|mark complete|completed|complete|next|continue|resume|start|launch|submit|play|study material|lecture|video|module|lesson|quiz|grade|transcript)\b/i;
+  /\b(mark as complete|mark complete|completed|complete|next item|go to next|next|continue|resume|start|launch|submit|play|study material|lecture|reading|video|module|week|lesson|quiz|grade|transcript|syllabus)\b/i;
 
-/**
- * Recursively collects all HTMLElements across standard DOM, open Shadow DOM roots
- * (used heavily by Cisco NetAcad / Adapt Learning), and accessible same-origin iframes.
- */
 export function collectAllElementsDeep(
   root: Document | HTMLElement | ShadowRoot,
   maxNodes = 4000
@@ -637,9 +433,7 @@ export function collectAllElementsDeep(
           if (frameDoc?.body) {
             visit(frameDoc.body);
           }
-        } catch {
-          // Cross-origin iframes are handled by background frame aggregation
-        }
+        } catch {}
       }
 
       if (el.children && el.children.length > 0) {
@@ -656,29 +450,26 @@ export function isHighPriorityLMSAction(el: HTMLElement): boolean {
   const tag = el.tagName.toUpperCase();
   if (tag === 'VIDEO' || tag === 'AUDIO') return true;
 
+  const role = (el.getAttribute('role') || '').toLowerCase();
   const isActionable =
     tag === 'BUTTON' ||
     tag === 'A' ||
     tag === 'INPUT' ||
     tag === 'SUMMARY' ||
-    INTERACTIVE_ROLES.has((el.getAttribute('role') || '').toLowerCase()) ||
+    INTERACTIVE_ROLES.has(role) ||
     el.hasAttribute('data-testid') ||
-    el.hasAttribute('aria-expanded');
+    el.hasAttribute('aria-expanded') ||
+    el.hasAttribute('aria-checked');
 
   if (!isActionable) return false;
 
   const sig = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${
     el.getAttribute('data-testid') || ''
-  } ${(el.textContent || '').slice(0, 80)}`;
+  } ${(el.textContent || '').slice(0, 90)}`;
 
   return LMS_PRIORITY_REGEX.test(sig);
 }
 
-/**
- * Checks if an element is visible. High-priority LMS controls (like "Mark as complete"
- * or "Next" below the fold in a scrollable lecture pane) are allowed within a wider vertical range
- * because MacroBatchExecutor automatically scrolls them into view before clicking.
- */
 export function isElementVisible(
   el: HTMLElement,
   win: Window = window,
@@ -726,7 +517,7 @@ export function isElementVisible(
     const vh = win.innerHeight || 1080;
 
     if (rect.width > 0 || rect.height > 0) {
-      const verticalBuffer = allowBelowFold ? vh * 2.5 : 80;
+      const verticalBuffer = allowBelowFold ? vh * 3 : 120;
       if (
         rect.bottom < -80 ||
         rect.top > vh + verticalBuffer ||
@@ -791,12 +582,13 @@ export function isCandidateNode(el: HTMLElement, win: Window = window): boolean 
     } catch {}
   }
 
-  // Leaf-only LMS interactive item check (prevents outer container divs from eating budget)
   const className = (el.className || '').toString().toLowerCase();
   if (
     (className.includes('accordion') ||
       className.includes('clickable') ||
-      className.includes('btn')) &&
+      className.includes('btn') ||
+      className.includes('weekitem') ||
+      className.includes('nav-item')) &&
     el.children.length <= 2 &&
     !el.querySelector('a, button, input, [role="button"], [role="link"]') &&
     !el.closest('a, button, [role="button"], [role="link"]') &&
@@ -850,7 +642,8 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
 
   if (tag === 'video' || tag === 'audio') {
     const media = el as HTMLMediaElement;
-    attrs.push(media.paused ? 'state="paused"' : 'state="playing"');
+    const ended = media.ended ? 'ended' : media.paused ? 'paused' : 'playing';
+    attrs.push(`state="${ended}"`);
   }
 
   if (
@@ -876,7 +669,7 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
         ? truncateText(sel.options[sel.selectedIndex].text || '', 20)
         : '';
   } else if (tag !== 'input') {
-    text = truncateText(el.textContent || '', 34);
+    text = truncateText(el.textContent || '', 36);
   }
 
   if (text) {
@@ -902,7 +695,7 @@ export function distillViewport(
   win: Window = window,
   options?: DistillOptions
 ): DistillResult {
-  const maxItems = options?.maxItems ?? 60;
+  const maxItems = options?.maxItems ?? 62;
   const lines: string[] = [];
   let interactiveCount = 0;
 
@@ -925,7 +718,6 @@ export function distillViewport(
   const elements = collectAllElementsDeep(walker);
   const totalWalked = elements.length;
 
-  // Separate high-priority LMS elements vs standard interactive elements so key controls are never dropped
   const priorityCandidates: HTMLElement[] = [];
   const standardCandidates: HTMLElement[] = [];
   const seenSet = new Set<HTMLElement>();
@@ -936,7 +728,6 @@ export function distillViewport(
 
     if (!isCandidateNode(el, win)) continue;
 
-    // Skip nested decorative/inner elements inside an interactive parent
     const interactiveAncestor = el.parentElement?.closest(
       'button, a, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="checkbox"], [role="radio"]'
     );
@@ -958,8 +749,7 @@ export function distillViewport(
     }
   }
 
-  // Merge: guarantee up to 22 priority LMS items + fill remaining slots in natural DOM order
-  const reservedPriority = new Set(priorityCandidates.slice(0, 22));
+  const reservedPriority = new Set(priorityCandidates.slice(0, 25));
   const orderedFinal: HTMLElement[] = [];
 
   for (let i = 0; i < elements.length; i++) {
@@ -970,7 +760,6 @@ export function distillViewport(
     }
   }
 
-  // Ensure any below-the-fold priority LMS items not yet added get included before hitting cap
   for (const pEl of reservedPriority) {
     if (!orderedFinal.includes(pEl)) {
       orderedFinal.push(pEl);
@@ -985,7 +774,8 @@ export function distillViewport(
 
     if (
       !isPriority &&
-      (interactiveCount >= maxItems - reservedPriority.size && interactiveCount >= maxItems)
+      interactiveCount >= maxItems - reservedPriority.size &&
+      interactiveCount >= maxItems
     ) {
       continue;
     }
@@ -1002,10 +792,9 @@ export function distillViewport(
     interactiveCount++;
   }
 
-  // Collect visible text snippets from h1, h2, h3, p, article, [class*="price"]
   try {
     const textEls = walker.querySelectorAll<HTMLElement>(
-      'h1, h2, h3, p, article, [class*="price"]'
+      'h1, h2, h3, p, article, [class*="price"], [data-testid*="title"]'
     );
     const snippets: string[] = [];
     let totalChars = 0;
@@ -1045,6 +834,321 @@ export function distillViewport(
 }
 
 ================
+File: src/lib/cdp/actuator.ts
+================
+export interface Coordinates {
+  x: number;
+  y: number;
+}
+
+export interface ActuatorOptions {
+  tabId: number;
+  preferCDP?: boolean;
+}
+
+export interface ActionResult {
+  success: boolean;
+  method: 'cdp' | 'synthetic';
+  error?: string;
+}
+
+const KEY_CODE_MAP: Record<string, { code: string; keyCode: number }> = {
+  Enter: { code: 'Enter', keyCode: 13 },
+  Tab: { code: 'Tab', keyCode: 9 },
+  Escape: { code: 'Escape', keyCode: 27 },
+  Backspace: { code: 'Backspace', keyCode: 8 },
+  ArrowDown: { code: 'ArrowDown', keyCode: 40 },
+  ArrowUp: { code: 'ArrowUp', keyCode: 38 },
+};
+
+export class CDPActuator {
+  readonly tabId: number;
+  private isAttached = false;
+  private preferCDP: boolean;
+
+  constructor(options: ActuatorOptions) {
+    this.tabId = options.tabId;
+    this.preferCDP = options.preferCDP ?? true;
+
+    if (typeof chrome !== 'undefined' && chrome.debugger?.onDetach) {
+      chrome.debugger.onDetach.addListener((source, reason) => {
+        if (source.tabId === this.tabId) {
+          console.warn(`[CDPActuator] Debugger detached from tab ${this.tabId}: ${reason}`);
+          this.isAttached = false;
+        }
+      });
+    }
+  }
+
+  async attach(): Promise<boolean> {
+    if (!this.preferCDP) return false;
+    if (this.isAttached) return true;
+
+    if (typeof chrome === 'undefined' || !chrome.debugger) {
+      return false;
+    }
+
+    try {
+      await chrome.debugger.attach({ tabId: this.tabId }, '1.3');
+      this.isAttached = true;
+      return true;
+    } catch (err) {
+      console.warn('[CDPActuator] Failed to attach chrome.debugger, falling back to synthetic:', err);
+      this.isAttached = false;
+      return false;
+    }
+  }
+
+  async detach(): Promise<void> {
+    if (!this.isAttached) return;
+    if (typeof chrome === 'undefined' || !chrome.debugger) return;
+
+    try {
+      await chrome.debugger.detach({ tabId: this.tabId });
+    } catch (err) {
+      console.warn('[CDPActuator] Error during detach:', err);
+    } finally {
+      this.isAttached = false;
+    }
+  }
+
+  get attached(): boolean {
+    return this.isAttached;
+  }
+
+  async click(coords?: Coordinates | null, fallbackElement?: HTMLElement | null): Promise<ActionResult> {
+    if (coords && this.preferCDP) {
+      const attached = await this.attach();
+      if (attached) {
+        try {
+          await this.sendCDPCommand('Input.dispatchMouseEvent', {
+            type: 'mousePressed',
+            x: coords.x,
+            y: coords.y,
+            button: 'left',
+            clickCount: 1,
+          });
+
+          await new Promise((r) => setTimeout(r, 40));
+
+          await this.sendCDPCommand('Input.dispatchMouseEvent', {
+            type: 'mouseReleased',
+            x: coords.x,
+            y: coords.y,
+            button: 'left',
+            clickCount: 1,
+          });
+
+          return { success: true, method: 'cdp' };
+        } catch (err) {
+          console.warn('[CDPActuator] CDP click failed, falling back to synthetic:', err);
+        }
+      }
+    }
+
+    if (fallbackElement) {
+      try {
+        try {
+          fallbackElement.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+        } catch {}
+
+        const rect = fallbackElement.getBoundingClientRect
+          ? fallbackElement.getBoundingClientRect()
+          : { left: 0, top: 0, width: 0, height: 0 };
+        const clientX = Math.round((rect.left || 0) + (rect.width || 0) / 2);
+        const clientY = Math.round((rect.top || 0) + (rect.height || 0) / 2);
+
+        const win = typeof window !== 'undefined' ? window : undefined;
+        const PointerEventClass = typeof PointerEvent !== 'undefined' ? PointerEvent : MouseEvent;
+
+        const baseInit = {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          clientX,
+          clientY,
+          button: 0,
+          buttons: 1,
+          view: win,
+        };
+
+        fallbackElement.dispatchEvent(new PointerEventClass('pointerover', { ...baseInit, buttons: 0 }));
+        fallbackElement.dispatchEvent(new MouseEvent('mouseover', { ...baseInit, buttons: 0 }));
+        fallbackElement.dispatchEvent(new PointerEventClass('pointerdown', baseInit));
+        fallbackElement.dispatchEvent(new MouseEvent('mousedown', baseInit));
+        if (typeof fallbackElement.focus === 'function') fallbackElement.focus();
+        fallbackElement.dispatchEvent(new PointerEventClass('pointerup', { ...baseInit, buttons: 0 }));
+        fallbackElement.dispatchEvent(new MouseEvent('mouseup', { ...baseInit, buttons: 0 }));
+        // Use a single native .click() so checkboxes and accordions are never double-toggled!
+        if (typeof fallbackElement.click === 'function') {
+          fallbackElement.click();
+        } else {
+          fallbackElement.dispatchEvent(new MouseEvent('click', { ...baseInit, buttons: 0 }));
+        }
+
+        return { success: true, method: 'synthetic' };
+      } catch (err) {
+        return {
+          success: false,
+          method: 'synthetic',
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }
+
+    return { success: false, method: 'synthetic', error: 'Neither coords nor fallbackElement provided' };
+  }
+
+  async type(
+    text: string,
+    coords?: Coordinates | null,
+    fallbackElement?: HTMLElement | null
+  ): Promise<ActionResult> {
+    if (coords && this.preferCDP) {
+      const attached = await this.attach();
+      if (attached) {
+        try {
+          await this.click(coords);
+
+          for (const char of text) {
+            await this.sendCDPCommand('Input.dispatchKeyEvent', {
+              type: 'keyDown',
+              text: char,
+              unmodifiedText: char,
+            });
+            await this.sendCDPCommand('Input.dispatchKeyEvent', {
+              type: 'keyUp',
+            });
+          }
+          return { success: true, method: 'cdp' };
+        } catch (err) {
+          console.warn('[CDPActuator] CDP typing failed, falling back to synthetic:', err);
+        }
+      }
+    }
+
+    if (fallbackElement) {
+      try {
+        fallbackElement.focus();
+        if (
+          fallbackElement instanceof HTMLInputElement ||
+          fallbackElement instanceof HTMLTextAreaElement
+        ) {
+          fallbackElement.value = text;
+          fallbackElement.dispatchEvent(new Event('input', { bubbles: true }));
+          fallbackElement.dispatchEvent(new Event('change', { bubbles: true }));
+        } else if (fallbackElement.isContentEditable) {
+          fallbackElement.textContent = text;
+          fallbackElement.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        return { success: true, method: 'synthetic' };
+      } catch (err) {
+        return {
+          success: false,
+          method: 'synthetic',
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }
+
+    return { success: false, method: 'synthetic', error: 'No target for typing' };
+  }
+
+  async pressKey(key: string, fallbackElement?: HTMLElement | null): Promise<ActionResult> {
+    const keyInfo = KEY_CODE_MAP[key];
+
+    if (this.preferCDP && (await this.attach())) {
+      try {
+        await this.sendCDPCommand('Input.dispatchKeyEvent', {
+          type: 'rawKeyDown',
+          key: keyInfo ? key : key,
+          code: keyInfo?.code ?? key,
+          windowsVirtualKeyCode: keyInfo?.keyCode ?? 0,
+          nativeVirtualKeyCode: keyInfo?.keyCode ?? 0,
+        });
+
+        await this.sendCDPCommand('Input.dispatchKeyEvent', {
+          type: 'keyUp',
+          key: keyInfo ? key : key,
+          code: keyInfo?.code ?? key,
+          windowsVirtualKeyCode: keyInfo?.keyCode ?? 0,
+          nativeVirtualKeyCode: keyInfo?.keyCode ?? 0,
+        });
+
+        return { success: true, method: 'cdp' };
+      } catch (err) {
+        console.warn('[CDPActuator] CDP pressKey failed, falling back to synthetic:', err);
+      }
+    }
+
+    const target = fallbackElement || (typeof document !== 'undefined' ? document.activeElement : null);
+    if (target) {
+      target.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key,
+          code: keyInfo?.code ?? key,
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+      target.dispatchEvent(
+        new KeyboardEvent('keyup', {
+          key,
+          code: keyInfo?.code ?? key,
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+      return { success: true, method: 'synthetic' };
+    }
+
+    return { success: false, method: 'synthetic', error: 'No active element for key press' };
+  }
+
+  async scroll(direction: 'up' | 'down', amount = 400): Promise<ActionResult> {
+    const deltaY = direction === 'down' ? amount : -amount;
+
+    if (this.preferCDP && (await this.attach())) {
+      try {
+        await this.sendCDPCommand('Input.dispatchMouseEvent', {
+          type: 'mouseWheel',
+          x: 400,
+          y: 400,
+          deltaX: 0,
+          deltaY,
+        });
+        return { success: true, method: 'cdp' };
+      } catch (err) {
+        console.warn('[CDPActuator] CDP scroll failed, falling back to synthetic:', err);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.scrollBy({ top: deltaY, behavior: 'smooth' });
+      return { success: true, method: 'synthetic' };
+    }
+
+    return { success: false, method: 'synthetic', error: 'Window not available for scroll' };
+  }
+
+  private async sendCDPCommand(method: string, params?: Record<string, unknown>): Promise<unknown> {
+    if (typeof chrome === 'undefined' || !chrome.debugger) {
+      throw new Error('chrome.debugger API is not available');
+    }
+
+    return new Promise((resolve, reject) => {
+      chrome.debugger.sendCommand({ tabId: this.tabId }, method, params, (result) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(result);
+        }
+      });
+    });
+  }
+}
+
+================
 File: src/lib/executor/macroExecutor.ts
 ================
 import { MacroAction } from '../llm/types';
@@ -1072,27 +1176,32 @@ export function highlightTarget(el: HTMLElement): void {
   if (!el || typeof el.style === 'undefined') return;
   const originalOutline = el.style.outline;
   const originalOffset = el.style.outlineOffset;
-  el.style.outline = '2px solid #39d353';
+  const originalBoxShadow = el.style.boxShadow;
+  // Marvel's Vision Mind Stone gold + Android teal spotlight
+  el.style.outline = '2px solid #fbbf24';
   el.style.outlineOffset = '2px';
+  el.style.boxShadow = '0 0 14px rgba(251, 191, 36, 0.75)';
   setTimeout(() => {
     try {
       el.style.outline = originalOutline;
       el.style.outlineOffset = originalOffset;
+      el.style.boxShadow = originalBoxShadow;
     } catch {}
-  }, 350);
+  }, 450);
 }
 
 /**
- * Dispatches a complete PointerEvent + MouseEvent sequence with composed: true
- * so React 18/19, React Aria (Coursera), Material UI, and Shadow DOM (Cisco NetAcad)
- * components reliably trigger their click handlers.
+ * Dispatches a realistic PointerEvent + MouseEvent sequence with composed: true
+ * for React Aria (Coursera), Material UI, and Shadow DOM (Cisco NetAcad).
  */
 export function dispatchRealisticClick(el: HTMLElement): void {
   try {
     el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
   } catch {}
 
-  const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 10, top: 10, width: 20, height: 20 };
+  const rect = el.getBoundingClientRect
+    ? el.getBoundingClientRect()
+    : { left: 10, top: 10, width: 20, height: 20 };
   const clientX = Math.round(rect.left + (rect.width || 20) / 2);
   const clientY = Math.round(rect.top + (rect.height || 20) / 2);
 
@@ -1109,7 +1218,9 @@ export function dispatchRealisticClick(el: HTMLElement): void {
 
   if (typeof PointerEvent !== 'undefined') {
     el.dispatchEvent(new PointerEvent('pointerover', { ...eventOpts, pointerId: 1, isPrimary: true }));
-    el.dispatchEvent(new PointerEvent('pointerenter', { ...eventOpts, bubbles: false, pointerId: 1, isPrimary: true }));
+    el.dispatchEvent(
+      new PointerEvent('pointerenter', { ...eventOpts, bubbles: false, pointerId: 1, isPrimary: true })
+    );
     el.dispatchEvent(new PointerEvent('pointerdown', { ...eventOpts, pointerId: 1, isPrimary: true }));
   }
 
@@ -1120,17 +1231,23 @@ export function dispatchRealisticClick(el: HTMLElement): void {
   } catch {}
 
   if (typeof PointerEvent !== 'undefined') {
-    el.dispatchEvent(new PointerEvent('pointerup', { ...eventOpts, buttons: 0, pointerId: 1, isPrimary: true }));
+    el.dispatchEvent(
+      new PointerEvent('pointerup', { ...eventOpts, buttons: 0, pointerId: 1, isPrimary: true })
+    );
   }
 
   el.dispatchEvent(new MouseEvent('mouseup', { ...eventOpts, buttons: 0 }));
-  el.click();
+
+  // If element is wrapped inside an <a> or <button>, ensure the interactive element receives the click
+  const clickableTarget =
+    el.tagName === 'A' || el.tagName === 'BUTTON' || el.tagName === 'INPUT'
+      ? el
+      : (el.closest?.('a, button, [role="button"], [role="link"], [role="checkbox"]') as HTMLElement | null) ||
+        el;
+
+  clickableTarget.click();
 }
 
-/**
- * Scrolls both the main window AND inner scrollable containers (like Coursera's
- * lecture pane & curriculum sidebar or NetAcad's lesson container).
- */
 export function smartScroll(
   direction: 'up' | 'down',
   targetEl?: HTMLElement | null,
@@ -1138,7 +1255,6 @@ export function smartScroll(
 ): void {
   const deltaY = direction === 'down' ? amount : -amount;
 
-  // 1. If a specific element was passed, scroll its nearest scrollable ancestor
   if (targetEl) {
     let cur: HTMLElement | null = targetEl;
     while (cur) {
@@ -1153,7 +1269,6 @@ export function smartScroll(
     }
   }
 
-  // 2. Scroll main window
   if (typeof window !== 'undefined') {
     try {
       window.scrollBy({ top: deltaY, behavior: 'instant' });
@@ -1162,7 +1277,6 @@ export function smartScroll(
     }
   }
 
-  // 3. Find and scroll the top 2 largest inner scrollable containers in the DOM / Shadow DOM
   if (typeof document !== 'undefined' && document.body) {
     const allNodes = collectAllElementsDeep(document.body, 2500);
     const scrollables: Array<{ el: HTMLElement; area: number }> = [];
@@ -1179,7 +1293,7 @@ export function smartScroll(
     }
 
     scrollables.sort((a, b) => b.area - a.area);
-    for (const item of scrollables.slice(0, 2)) {
+    for (const item of scrollables.slice(0, 3)) {
       item.el.scrollTop += deltaY;
       try {
         item.el.scrollBy({ top: deltaY, behavior: 'instant' });
@@ -1188,10 +1302,6 @@ export function smartScroll(
   }
 }
 
-/**
- * Fast-forwards and dispatches completion events on HTML5 <video> and <audio> elements
- * so LMS platforms (Coursera, NetAcad) register lecture media progress.
- */
 export async function completePageMedia(targetEl?: HTMLElement | null): Promise<void> {
   if (typeof document === 'undefined' || !document.body) return;
   const allElements = collectAllElementsDeep(document.body, 2500);
@@ -1254,9 +1364,15 @@ export function getElementSelector(el: HTMLElement): string {
     return `[data-testid="${esc}"]`;
   }
   if (el.className && typeof el.className === 'string') {
-    const classes = el.className.trim().split(/\s+/).filter((c) => !c.includes(':') && !c.includes('/'));
+    const classes = el.className
+      .trim()
+      .split(/\s+/)
+      .filter((c) => !c.includes(':') && !c.includes('/'));
     if (classes.length > 0) {
-      return `${el.tagName.toLowerCase()}.${classes.slice(0, 2).map((c) => (CSS?.escape ? CSS.escape(c) : c)).join('.')}`;
+      return `${el.tagName.toLowerCase()}.${classes
+        .slice(0, 2)
+        .map((c) => (CSS?.escape ? CSS.escape(c) : c))
+        .join('.')}`;
     }
   }
   return el.tagName.toLowerCase();
@@ -1289,7 +1405,7 @@ export class MacroBatchExecutor {
     this.registry = options?.registry ?? globalElementRegistry;
     this.actuator = options?.actuator;
     this.deltaTracker = options?.deltaTracker;
-    this.debounceMs = options?.debounceMs ?? 120;
+    this.debounceMs = options?.debounceMs ?? 140;
     this.getCurrentUrl =
       options?.getCurrentUrl ??
       (() => (typeof window !== 'undefined' ? window.location.href : ''));
@@ -1579,76 +1695,201 @@ export class MacroBatchExecutor {
 }
 
 ================
-File: src/lib/agent/types.ts
+File: src/lib/llm/contextManager.ts
 ================
-import { MacroAction, RouterTier, LLMProviderType } from '../llm/types';
-import { ActionTrace } from '../executor/macroExecutor';
+import { ChatMessage, AgentPlanResponse } from './types';
 
-export type AgentStatus =
-  | 'idle'
-  | 'running'
-  | 'waiting_approval'
-  | 'paused'
-  | 'completed'
-  | 'error';
-
-export interface TokenMetrics {
+export interface TokenEstimationMetrics {
   totalEstimatedTokens: number;
   cachedPrefixTokens: number;
   freshTokens: number;
   estimatedCostDiscountPercent: number;
 }
 
-export interface AgentSessionState {
-  status: AgentStatus;
-  goal: string;
-  tabId: number;
-  stepNumber: number;
-  maxSteps: number;
-  currentThought: string;
-  pendingActions: MacroAction[];
-  requiresApproval: boolean;
-  approvalDetails?: {
-    action: MacroAction;
-    reason: string;
-  };
-  tokenMetrics: TokenMetrics;
-  completedTraces: ActionTrace[];
-  activeProvider?: LLMProviderType;
-  activeTier?: RouterTier;
-  activeModel?: string;
-  fallbackNotice?: string;
-  error?: string;
+export const AGENT_SYSTEM_PROMPT = `You are Vision AI, an ultra-low-token autonomous Chrome browser agent inspired by Marvel's Vision.
+Your objective is to accomplish the user's browser goal from start to finish through real browser interactions.
+
+CORE OPERATIONAL MANDATES:
+1. MULTI-STEP PERSISTENCE (NEVER QUIT EARLY):
+   - If the user asks for a sequence of steps (e.g., "open study material, watch/complete video lectures, and click mark as complete"), you MUST keep setting "complete": false after each intermediate step until the ENTIRE workflow is finished!
+   - Opening a page or clicking the first module is ONLY Step 1. Set "complete": false so you receive the next step's DOM observation and can complete the remaining actions.
+   - Never output conversational refusals or disclaimers. Always execute the next concrete action visible in the DOM.
+
+2. AVAILABLE MACRO ACTIONS:
+- click: { type: "click", id: number, stop_if_url_changes?: boolean }
+- fill: { type: "fill", id: number, value: string }
+- select: { type: "select", id: number, value: string }
+- press: { type: "press", id?: number, value: "Enter"|"Tab"|"Escape"|"Backspace" }
+- scroll: { type: "scroll", id?: number, value: "up"|"down" } (Scrolls both window and inner scrollable course/lecture panes)
+- complete_media: { type: "complete_media", id?: number } (Plays, fast-forwards to the end, and fires completion events on HTML5 <video>/<audio> lectures on Coursera/NetAcad)
+- wait: { type: "wait", value: "600" }
+- request_vision_crop: { type: "request_vision_crop", id: number }
+- navigate: { type: "navigate", value: "https://..." }
+- go_back: { type: "go_back" }
+- open_tab: { type: "open_tab", value: "https://..." }
+- switch_tab: { type: "switch_tab", value: "<tabId or url keyword>" }
+
+3. COURSERA / NETACAD / LMS PLAYBOOK:
+- Step A: If you are on a course overview/syllabus page, click the first uncompleted module accordion (expanded=false), study material link, reading, or video lecture item, and set "complete": false.
+- Step B: Once inside a video lecture (<video state="paused"|"playing">), emit { "type": "complete_media" } to finish the video, then click "Mark as complete", "Next", or "Go to next item".
+- Step C: Once inside a reading/study material page, if "Mark as complete" is not visible yet, emit { "type": "scroll", "value": "down" } with "complete": false, then click "Mark as complete" on the next step.
+
+RESPONSE FORMAT (STRICT JSON ONLY):
+{
+  "thought": "Clear explanation of what I observe on the page and the exact step I am taking now",
+  "actions": [
+    { "type": "click", "id": 1 }
+  ],
+  "complete": false
+}`;
+
+function fastHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16);
 }
 
-export interface TabSessionSummary {
-  tabId: number;
-  title: string;
-  url: string;
-  status: AgentStatus;
-  stepNumber: number;
-  goal: string;
-  isInternal: boolean;
+export function estimateTokenCount(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 3.8);
 }
 
-export type ExtensionMessage =
-  | { type: 'START_TASK'; goal: string; tabId?: number }
-  | { type: 'PAUSE_TASK'; tabId?: number }
-  | { type: 'RESUME_TASK'; tabId?: number }
-  | { type: 'STOP_TASK'; tabId?: number }
-  | { type: 'GET_AGENT_STATE'; tabId?: number }
-  | { type: 'LIST_TAB_SESSIONS' }
-  | { type: 'APPROVE_ACTION'; approved: boolean; tabId?: number }
-  | { type: 'DISTILL_VIEWPORT' }
-  | { type: 'EXECUTE_MACRO'; actions: MacroAction[] }
-  | { type: 'GET_DELTA' }
-  | { type: 'REQUEST_VISION_CROP'; targetId: number }
-  | { type: 'PING' };
+export function estimateMessagesTokens(messages: ChatMessage[]): number {
+  let total = 0;
+  for (const msg of messages) {
+    if (typeof msg.content === 'string') {
+      total += estimateTokenCount(msg.content) + 4;
+    } else {
+      for (const block of msg.content) {
+        if (block.type === 'text' && block.text) {
+          total += estimateTokenCount(block.text);
+        } else if (block.type === 'image') {
+          total += 258;
+        }
+      }
+      total += 4;
+    }
+  }
+  return total;
+}
+
+export class ByteStableContextManager {
+  private messages: ChatMessage[] = [];
+  private initialPrefixHash = '';
+  private prefixMessageCount = 0;
+  private prefixTokenCount = 0;
+
+  constructor() {
+    this.messages = [];
+  }
+
+  initializeRun(goal: string, step1DistilledDom: string): void {
+    this.messages = [
+      {
+        role: 'system',
+        content: AGENT_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+      {
+        role: 'user',
+        content: `USER GOAL: ${goal}\n\nINITIAL VIEWPORT DOM (Step 1):\n${step1DistilledDom}`,
+        cache_control: { type: 'ephemeral' },
+      },
+    ];
+
+    this.prefixMessageCount = this.messages.length;
+    this.initialPrefixHash = this.computePrefixHash();
+    this.prefixTokenCount = estimateMessagesTokens(this.messages);
+  }
+
+  private computePrefixHash(): string {
+    const prefixTexts = this.messages.slice(0, this.prefixMessageCount).map((m) => {
+      return `${m.role}:${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`;
+    });
+    return fastHash(prefixTexts.join('||'));
+  }
+
+  verifyPrefixStability(): boolean {
+    if (this.messages.length < this.prefixMessageCount) {
+      return false;
+    }
+    const currentPrefixHash = this.computePrefixHash();
+    return currentPrefixHash === this.initialPrefixHash;
+  }
+
+  appendAssistantPlan(plan: AgentPlanResponse): void {
+    if (!this.verifyPrefixStability()) {
+      throw new Error('Prefix stability invariant violated before appending plan!');
+    }
+
+    const jsonContent = JSON.stringify(
+      {
+        thought: plan.thought,
+        actions: plan.actions,
+        complete: plan.complete,
+      },
+      null,
+      2
+    );
+
+    this.messages.push({
+      role: 'assistant',
+      content: jsonContent,
+    });
+  }
+
+  appendStepObservation(stepNumber: number, observationOrDelta: string): void {
+    if (!this.verifyPrefixStability()) {
+      throw new Error('Prefix stability invariant violated before appending observation!');
+    }
+
+    this.messages.push({
+      role: 'user',
+      content: `[STEP ${stepNumber} OBSERVATION]\n${observationOrDelta}`,
+    });
+  }
+
+  getMessages(): ChatMessage[] {
+    if (!this.verifyPrefixStability()) {
+      throw new Error('Byte-stable prefix invariant violated!');
+    }
+    return [...this.messages];
+  }
+
+  getMessageCount(): number {
+    return this.messages.length;
+  }
+
+  getPrefixTokenCount(): number {
+    return this.prefixTokenCount;
+  }
+
+  getTelemetryMetrics(): TokenEstimationMetrics {
+    const totalEstimatedTokens = estimateMessagesTokens(this.messages);
+    const cachedPrefixTokens = this.prefixTokenCount;
+    const freshTokens = Math.max(0, totalEstimatedTokens - cachedPrefixTokens);
+
+    const billableEffective = freshTokens + cachedPrefixTokens * 0.1;
+    const estimatedCostDiscountPercent =
+      totalEstimatedTokens > 0
+        ? Math.round(((totalEstimatedTokens - billableEffective) / totalEstimatedTokens) * 100)
+        : 0;
+
+    return {
+      totalEstimatedTokens,
+      cachedPrefixTokens,
+      freshTokens,
+      estimatedCostDiscountPercent,
+    };
+  }
+}
 
 ================
 File: src/lib/agent/stateMachine.ts
 ================
-import { AgentSessionState } from './types';
+import { AgentSessionState, ThinkingStep } from './types';
 import { LLMRouter } from '../llm/router';
 import { ByteStableContextManager } from '../llm/contextManager';
 import { MacroAction } from '../llm/types';
@@ -1674,11 +1915,12 @@ export class AgentStateMachine {
   private lastKnownUrl = '';
   private actionHistorySignatures: string[] = [];
   private emptyActionCount = 0;
+  private frameElementMap = new Map<number, { frameId: number; localId: number }>();
 
-  constructor(router: LLMRouter, hooks: StateMachineHooks = {}) {
+  constructor(router: LLMRouter, hooks: StateMachineHooks = {}, storageKey?: string) {
     this.router = router;
     this.hooks = hooks;
-    this.storageKey = hooks.sessionStorageKey ?? DEFAULT_STORAGE_SESSION_KEY;
+    this.storageKey = storageKey ?? hooks.sessionStorageKey ?? DEFAULT_STORAGE_SESSION_KEY;
     this.contextManager = new ByteStableContextManager();
     this.state = this.getInitialState();
   }
@@ -1700,6 +1942,7 @@ export class AgentStateMachine {
         estimatedCostDiscountPercent: 0,
       },
       completedTraces: [],
+      thinkingHistory: [],
     };
   }
 
@@ -1714,7 +1957,10 @@ export class AgentStateMachine {
       const res = await chrome.storage.session.get(this.storageKey);
       const saved = res[this.storageKey] as AgentSessionState | undefined;
       if (saved) {
-        this.state = saved;
+        this.state = {
+          ...saved,
+          thinkingHistory: Array.isArray(saved.thinkingHistory) ? saved.thinkingHistory : [],
+        };
         this.hooks.onStateChange?.(this.state);
         return true;
       }
@@ -1733,6 +1979,17 @@ export class AgentStateMachine {
       }
     }
     this.hooks.onStateChange?.(this.state);
+  }
+
+  private upsertThinkingStep(step: ThinkingStep): void {
+    const history = this.state.thinkingHistory ? [...this.state.thinkingHistory] : [];
+    const idx = history.findIndex((s) => s.stepNumber === step.stepNumber);
+    if (idx >= 0) {
+      history[idx] = { ...history[idx], ...step };
+    } else {
+      history.push(step);
+    }
+    this.state.thinkingHistory = history;
   }
 
   async startTask(goal: string, tabId: number): Promise<void> {
@@ -1764,13 +2021,14 @@ export class AgentStateMachine {
       return;
     }
 
-    if (!this.hooks.sessionStorageKey && targetTabId > 0) {
+    if (!this.hooks.sessionStorageKey && targetTabId > 0 && this.storageKey === DEFAULT_STORAGE_SESSION_KEY) {
       this.storageKey = `orbit_agent_session_tab_${targetTabId}`;
     }
 
     this.lastKnownUrl = '';
     this.actionHistorySignatures = [];
     this.emptyActionCount = 0;
+    this.frameElementMap.clear();
 
     this.state = {
       ...this.getInitialState(),
@@ -1778,6 +2036,7 @@ export class AgentStateMachine {
       goal,
       tabId: targetTabId,
       stepNumber: 1,
+      thinkingHistory: [],
     };
     await this.persistSession();
 
@@ -1796,9 +2055,21 @@ export class AgentStateMachine {
       return this.state;
     }
 
+    const currentStepNum = this.state.stepNumber;
+
     try {
+      // Emit live "thinking" step placeholder so Chat UI shows instant Mind Stone activity
+      this.upsertThinkingStep({
+        stepNumber: currentStepNum,
+        thought: `Scanning page DOM and synthesizing Step ${currentStepNum} plan...`,
+        actions: [],
+        status: 'thinking',
+        timestamp: Date.now(),
+      });
+      await this.persistSession();
+
       let observationText = '';
-      if (this.state.stepNumber === 1) {
+      if (currentStepNum === 1) {
         observationText = await this.queryTabDistillation(this.state.tabId);
         this.lastKnownUrl = await this.getTabUrl(this.state.tabId);
 
@@ -1809,6 +2080,15 @@ export class AgentStateMachine {
             this.state.currentThought = 'Executing matched 0-token deterministic domain skill from cache.';
             const execResult = await this.sendActionsToTab(this.state.tabId, skillMatch.actions);
             this.state.completedTraces.push(...execResult.executedTraces);
+            this.upsertThinkingStep({
+              stepNumber: 1,
+              thought: this.state.currentThought,
+              actions: skillMatch.actions,
+              executedTraces: execResult.executedTraces,
+              status: 'done',
+              timestamp: Date.now(),
+              pageUrl: tabUrl,
+            });
             this.state.status = 'completed';
             await this.persistSession();
             return this.state;
@@ -1822,32 +2102,31 @@ export class AgentStateMachine {
         const didNavigate = Boolean(currentUrl && previousUrl && currentUrl !== previousUrl);
         this.lastKnownUrl = currentUrl;
 
+        // CRITICAL FIX: Always run queryTabDistillation so newly scrolled or expanded Coursera/LMS elements
+        // get registered in globalElementRegistry with fresh [id] numbers!
+        const deltaResult = await this.queryTabDelta(this.state.tabId);
+        const freshDom = await this.queryTabDistillation(this.state.tabId);
+        const hasNoDelta = deltaResult.includes('NO CHANGES');
+
         let stepObs = '';
         if (didNavigate) {
-          const freshDom = await this.queryTabDistillation(this.state.tabId);
-          stepObs = `ACTION RESULT: Previous action executed. Page navigated to: ${currentUrl}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
+          stepObs = `ACTION RESULT: Page navigated to: ${currentUrl}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
+        } else if (hasNoDelta) {
+          stepObs = `CURRENT PAGE: ${currentUrl || 'Current Tab'}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
         } else {
-          const deltaResult = await this.queryTabDelta(this.state.tabId);
-          const hasNoDelta = deltaResult.includes('NO CHANGES');
-
-          if (hasNoDelta) {
-            const freshDom = await this.queryTabDistillation(this.state.tabId);
-            stepObs = `CURRENT PAGE: ${currentUrl || 'Current Tab'}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
-          } else {
-            stepObs = `CURRENT PAGE: ${currentUrl || 'Current Tab'}\n${deltaResult}`;
-          }
+          stepObs = `CURRENT PAGE: ${currentUrl || 'Current Tab'}\n${deltaResult}\nUPDATED VIEWPORT DOM:\n${freshDom}`;
         }
 
         if (this.actionHistorySignatures.length >= 2) {
           const lastSig = this.actionHistorySignatures[this.actionHistorySignatures.length - 1];
           const prevSig = this.actionHistorySignatures[this.actionHistorySignatures.length - 2];
           if (lastSig === prevSig && !didNavigate) {
-            stepObs += `\n[SYSTEM NOTE: Previous action "${lastSig}" produced no page progression. Avoid repeating it. Try scrolling down ({ "type": "scroll", "value": "down" }), completing media ({ "type": "complete_media" }), or clicking another module/button.]`;
+            stepObs += `\n[SYSTEM NOTE: Previous action "${lastSig}" produced no page progression. Do NOT repeat it. Try scrolling down ({ "type": "scroll", "value": "down" }), completing media ({ "type": "complete_media" }), or clicking the next module/item.]`;
           }
         }
 
         observationText = stepObs;
-        this.contextManager.appendStepObservation(this.state.stepNumber, observationText);
+        this.contextManager.appendStepObservation(currentStepNum, observationText);
       }
 
       this.updateTelemetry();
@@ -1867,7 +2146,7 @@ export class AgentStateMachine {
         (isInfo && this.hasCompletionIndication(plan.thought) && !isRefusal) ||
         (plan.complete === true && plan.thought.length > 20 && !isRefusal);
 
-      if (this.state.stepNumber === 1 && plan.actions.length === 0 && !isFinishedWithAnswer) {
+      if (currentStepNum === 1 && plan.actions.length === 0 && !isFinishedWithAnswer) {
         const actionNudge = `[SYSTEM ACTION MANDATE]: You returned 0 actions. As an autonomous browser agent, you must interact with the page. Do not output disclaimers or conversational lectures. Take the immediate next concrete step toward the goal (e.g. click the first module, lesson, start link, or accordion item visible in the viewport DOM). Output valid JSON with at least 1 action.`;
         this.contextManager.appendStepObservation(1, actionNudge);
 
@@ -1896,6 +2175,18 @@ export class AgentStateMachine {
       this.state.currentThought = plan.thought;
       this.state.pendingActions = plan.actions;
 
+      this.upsertThinkingStep({
+        stepNumber: currentStepNum,
+        thought: plan.thought,
+        actions: plan.actions,
+        status: plan.actions.length > 0 ? 'acting' : 'done',
+        timestamp: Date.now(),
+        provider,
+        model: modelUsed,
+        pageUrl: this.lastKnownUrl,
+      });
+      await this.persistSession();
+
       if (this.hooks.isDestructiveAction) {
         for (const action of plan.actions) {
           const check = this.hooks.isDestructiveAction(action);
@@ -1915,8 +2206,16 @@ export class AgentStateMachine {
       await this.executePendingActions(plan.complete);
       return this.state;
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       this.state.status = 'error';
-      this.state.error = err instanceof Error ? err.message : String(err);
+      this.state.error = errMsg;
+      this.upsertThinkingStep({
+        stepNumber: currentStepNum,
+        thought: this.state.currentThought || `Error on Step ${currentStepNum}: ${errMsg}`,
+        actions: [],
+        status: 'error',
+        timestamp: Date.now(),
+      });
       this.router.recordFailure();
       await this.persistSession();
       return this.state;
@@ -1944,6 +2243,7 @@ export class AgentStateMachine {
   }
 
   private async executePendingActions(isPlanComplete: boolean): Promise<void> {
+    const currentStepNum = this.state.stepNumber;
     const actions = this.state.pendingActions;
     this.state.pendingActions = [];
 
@@ -1958,9 +2258,11 @@ export class AgentStateMachine {
       this.emptyActionCount = 0;
     }
 
+    let stepTraces: ActionTrace[] = [];
     if (actions.length > 0) {
       const execResult = await this.sendActionsToTab(this.state.tabId, actions);
       if (execResult && Array.isArray(execResult.executedTraces)) {
+        stepTraces = execResult.executedTraces;
         this.state.completedTraces.push(...execResult.executedTraces);
       }
 
@@ -1971,9 +2273,32 @@ export class AgentStateMachine {
       }
     }
 
+    this.upsertThinkingStep({
+      stepNumber: currentStepNum,
+      thought: this.state.currentThought,
+      actions,
+      executedTraces: stepTraces,
+      status: 'done',
+      timestamp: Date.now(),
+      provider: this.state.activeProvider,
+      model: this.state.activeModel,
+      pageUrl: this.lastKnownUrl,
+    });
+
     let shouldComplete = isPlanComplete;
 
     if (this.hasRefusalIndication(this.state.currentThought)) {
+      shouldComplete = false;
+    }
+
+    // Do not allow premature completion on multi-step goals if actions were just executed and thought indicates more steps remain
+    if (
+      shouldComplete &&
+      actions.length > 0 &&
+      /\b(now i will|next i will|opening|clicking module|let's open|scrolling to find)\b/i.test(
+        this.state.currentThought
+      )
+    ) {
       shouldComplete = false;
     }
 
@@ -2080,16 +2405,21 @@ export class AgentStateMachine {
 
   private hasCompletionIndication(thought: string): boolean {
     const lower = (thought || '').toLowerCase();
-    // Never treat future-intent thoughts (e.g. "I need to click Mark as complete") as finished
-    if (/\b(will|going to|need to|next|try to|let's|clicking|opening|scrolling)\b/i.test(lower)) {
+    if (
+      /\b(will|going to|need to|next|try to|let's|clicking|opening|scrolling|not done)\b/i.test(lower)
+    ) {
       return false;
     }
     const completionPhrases = [
       'task complete',
       'task is complete',
       'goal completed',
+      'goal is complete',
       'goal achieved',
+      'goal is achieved',
       'all steps complete',
+      'steps are done',
+      'steps are complete',
       'finished',
       'found',
       'here is',
@@ -2150,7 +2480,9 @@ export class AgentStateMachine {
       await new Promise((r) => setTimeout(r, 80));
     }
 
-    await new Promise((r) => setTimeout(r, 60));
+    // Allow SPA frameworks (Coursera React Router / NetAcad) time to render new lecture DOM
+    const isTestEnv = typeof process !== 'undefined' && process.env.NODE_ENV === 'test';
+    await new Promise((r) => setTimeout(r, isTestEnv ? 40 : 320));
 
     try {
       const finalTab = await chrome.tabs.get(tabId);
@@ -2172,10 +2504,6 @@ export class AgentStateMachine {
     return '';
   }
 
-  /**
-   * Collects interactive elements from child iframes (e.g., Cisco NetAcad SCORM / course frames)
-   * using composite IDs (frameId * 10000 + localId).
-   */
   private async appendSubframeDistillation(tabId: number, mainText: string): Promise<string> {
     if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript || tabId <= 0) {
       return mainText;
@@ -2242,14 +2570,42 @@ export class AgentStateMachine {
       if (!Array.isArray(frameResults)) return mainText;
 
       const extraLines: string[] = [];
+      let frameIndex = 0;
       for (const fr of frameResults) {
         const frameId = (fr as any).frameId as number | undefined;
-        const items = fr.result as Array<{ localId: number; desc: string }> | null;
-        if (frameId && frameId > 0 && Array.isArray(items) && items.length > 0) {
-          extraLines.push(`--- EMBEDDED COURSE/CONTENT FRAME #${frameId} ---`);
-          for (const item of items) {
-            const compositeId = frameId * SUBFRAME_ID_MULTIPLIER + item.localId;
-            extraLines.push(`[${compositeId}] ${item.desc}`);
+        if (!frameId || frameId <= 0) continue;
+        frameIndex++;
+
+        const res = (fr as any).result as any;
+        if (!res) continue;
+
+        if (Array.isArray(res) && res.length > 0) {
+          extraLines.push(`--- IFRAME [Frame ${frameId}: Embedded Content] ---`);
+          for (const item of res) {
+            const globalId = frameIndex * 1000 + item.localId;
+            this.frameElementMap.set(globalId, { frameId, localId: item.localId });
+            extraLines.push(`[${globalId}] ${item.desc}`);
+          }
+        } else if (res.items && Array.isArray(res.items) && res.items.length > 0) {
+          const title = res.frameTitle || 'LMS Content';
+          extraLines.push(`--- IFRAME [Frame ${frameId}: ${title}] ---`);
+          for (const item of res.items) {
+            const globalId = frameIndex * 1000 + item.localId;
+            this.frameElementMap.set(globalId, { frameId, localId: item.localId });
+            if (item.desc) {
+              extraLines.push(`[${globalId}] ${item.desc}`);
+            } else {
+              const attrStr = item.attrStr
+                ? item.attrStr.startsWith(' ')
+                  ? item.attrStr
+                  : ' ' + item.attrStr
+                : '';
+              if (item.text) {
+                extraLines.push(`[${globalId}] <${item.tag}${attrStr}>${item.text}</${item.tag}>`);
+              } else {
+                extraLines.push(`[${globalId}] <${item.tag}${attrStr} />`);
+              }
+            }
           }
         }
       }
@@ -2287,7 +2643,7 @@ export class AgentStateMachine {
         lowerUrl.startsWith('view-source:')
       ) {
         throw new Error(
-          `Vision AI cannot run on Chrome internal page (${tabUrl}). Please open or switch to any website (e.g. https://www.google.com or https://wikipedia.org) and try again.`
+          `Vision AI cannot run on Chrome internal page (${tabUrl}). Please open or switch to any website (e.g. https://www.coursera.org or https://www.google.com) and try again.`
         );
       }
     }
@@ -2460,9 +2816,11 @@ export class AgentStateMachine {
     try {
       const res = await chrome.scripting.executeScript({
         target: { tabId, frameIds: [frameId] },
-        func: (id: number, actionObj: MacroAction) => {
-          const reg: Map<number, HTMLElement> | undefined = (window as any).__vision_ai_subframe_reg__;
-          const el = reg?.get(id);
+        func: (actionObj: MacroAction) => {
+          const winAny = window as any;
+          const reg: Map<number, HTMLElement> | undefined =
+            winAny.__vision_ai_subframe_reg__ || winAny.__vision_ai_registry__;
+          const el = actionObj.id !== undefined && reg ? reg.get(actionObj.id) : null;
           if (!el) return false;
           try {
             el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
@@ -2473,14 +2831,17 @@ export class AgentStateMachine {
             el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, composed: true }));
             el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, composed: true }));
             el.click();
-          } else if (actionObj.type === 'fill' && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+          } else if (
+            actionObj.type === 'fill' &&
+            (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)
+          ) {
             el.value = actionObj.value || '';
             el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
             el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
           }
           return true;
         },
-        args: [localId, act],
+        args: [{ ...act, id: localId }],
       });
       return Boolean(res?.[0]?.result);
     } catch {
@@ -2504,7 +2865,12 @@ export class AgentStateMachine {
             if (settledUrl) this.lastKnownUrl = settledUrl;
             executedTraces.push({ action: act, timestamp: Date.now(), success: true });
           } catch (navErr) {
-            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(navErr) });
+            executedTraces.push({
+              action: act,
+              timestamp: Date.now(),
+              success: false,
+              error: String(navErr),
+            });
             abortedEarly = true;
             abortReason = 'action_failed';
             break;
@@ -2525,7 +2891,12 @@ export class AgentStateMachine {
             if (settledUrl) this.lastKnownUrl = settledUrl;
             executedTraces.push({ action: act, timestamp: Date.now(), success: true });
           } catch (backErr) {
-            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(backErr) });
+            executedTraces.push({
+              action: act,
+              timestamp: Date.now(),
+              success: false,
+              error: String(backErr),
+            });
             abortedEarly = true;
             abortReason = 'action_failed';
             break;
@@ -2549,7 +2920,12 @@ export class AgentStateMachine {
             }
             executedTraces.push({ action: act, timestamp: Date.now(), success: true });
           } catch (tabErr) {
-            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(tabErr) });
+            executedTraces.push({
+              action: act,
+              timestamp: Date.now(),
+              success: false,
+              error: String(tabErr),
+            });
           }
         } else {
           executedTraces.push({ action: act, timestamp: Date.now(), success: true });
@@ -2572,13 +2948,21 @@ export class AgentStateMachine {
             }
             executedTraces.push({ action: act, timestamp: Date.now(), success: true });
           } catch (swErr) {
-            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(swErr) });
+            executedTraces.push({
+              action: act,
+              timestamp: Date.now(),
+              success: false,
+              error: String(swErr),
+            });
           }
         } else {
           executedTraces.push({ action: act, timestamp: Date.now(), success: true });
         }
+      } else if (act.id !== undefined && this.frameElementMap.has(act.id)) {
+        const mapped = this.frameElementMap.get(act.id)!;
+        const ok = await this.executeSubframeAction(tabId, mapped.frameId, mapped.localId, act);
+        executedTraces.push({ action: act, timestamp: Date.now(), success: ok });
       } else if (act.id !== undefined && act.id >= SUBFRAME_ID_MULTIPLIER) {
-        // Composite ID targeting an embedded SCORM / LMS iframe
         const frameId = Math.floor(act.id / SUBFRAME_ID_MULTIPLIER);
         const localId = act.id % SUBFRAME_ID_MULTIPLIER;
         const ok = await this.executeSubframeAction(tabId, frameId, localId, act);
@@ -2656,7 +3040,7 @@ import { globalSkillStore, compileTraceToSkill } from '../src/lib/skills/skillSt
 import { classifyActionSafety } from '../src/lib/safety/interceptor';
 
 export default defineBackground(() => {
-  console.log('[Vision AI] Multi-Tab Service Worker background loop initialized.');
+  console.log('[Vision AI] Synthezoid Multi-Tab Service Worker initialized.');
 
   if (typeof chrome !== 'undefined') {
     if (chrome.sidePanel?.setOptions) {
@@ -2728,7 +3112,6 @@ export default defineBackground(() => {
     }
   });
 
-  // Per-Tab Isolated Agent State Machine Map
   const tabAgents = new Map<number, AgentStateMachine>();
 
   const getOrCreateTabAgent = (tabId: number): AgentStateMachine => {
@@ -2818,7 +3201,6 @@ export default defineBackground(() => {
         resolveActiveTabId(message.tabId).then(async (tabId) => {
           await syncStorageToRouter();
           const agent = getOrCreateTabAgent(tabId);
-          // Do not block other tabs: start task asynchronously on this tab's state machine
           agent.startTask(message.goal, tabId).catch((err) => {
             console.warn(`[Vision AI] Tab ${tabId} startTask error:`, err);
           });
@@ -2862,6 +3244,56 @@ export default defineBackground(() => {
             await agent.restoreSession();
           }
           sendResponse(agent.getState());
+        });
+        return true;
+      }
+
+      case 'SET_ACTIVE_MODEL': {
+        (async () => {
+          await syncStorageToRouter();
+          const currentCfg = router.getConfig();
+          const updates: Record<string, any> = {};
+          if (message.provider === 'openrouter' || message.provider === 'groq' || message.provider === 'gemini') {
+            updates.preferredTier1Provider = message.provider;
+          }
+          if (message.provider === 'openrouter') updates.openRouterModel = message.model;
+          if (message.provider === 'groq') updates.groqModel = message.model;
+          if (message.provider === 'gemini') updates.geminiModel = message.model;
+          if (message.provider === 'anthropic') {
+            updates.preferredTier2Provider = 'anthropic';
+            updates.anthropicModel = message.model;
+          }
+          if (message.provider === 'ollama') updates.tier0Model = message.model;
+
+          router.updateConfig(updates);
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            const stored = await chrome.storage.local.get('modelRoutingConfig');
+            await chrome.storage.local.set({
+              modelRoutingConfig: { ...(stored.modelRoutingConfig || currentCfg), ...updates },
+            });
+          }
+          sendResponse({ success: true, config: router.getConfig() });
+        })();
+        return true;
+      }
+
+      case 'INSPECT_TAB_DOM': {
+        resolveActiveTabId(message.tabId).then(async (tabId) => {
+          if (tabId <= 0 || typeof chrome === 'undefined' || !chrome.tabs?.sendMessage) {
+            sendResponse({ error: 'No active tab to inspect' });
+            return;
+          }
+          try {
+            const res = await chrome.tabs.sendMessage(tabId, { type: 'DISTILL_VIEWPORT' });
+            sendResponse({
+              url: res?.url || '',
+              title: res?.title || '',
+              interactiveCount: res?.count || 0,
+              distilledPreview: res?.text || '(Empty DOM)',
+            });
+          } catch (err) {
+            sendResponse({ error: String(err) });
+          }
         });
         return true;
       }
@@ -2916,6 +3348,818 @@ export default defineBackground(() => {
 });
 
 ================
+File: entrypoints/sidepanel/components/TaskStream.tsx
+================
+import React, { useState, useRef, useEffect } from 'react';
+import { AgentSessionState, ThinkingStep } from '../../../src/lib/agent/types';
+import {
+  Play,
+  Pause,
+  Square,
+  Sparkles,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  RotateCcw,
+  Cpu,
+  ChevronDown,
+  ChevronRight,
+  Brain,
+  Terminal,
+  Send,
+  GraduationCap,
+} from 'lucide-react';
+
+export interface QuickModelOption {
+  provider: 'openrouter' | 'groq' | 'gemini' | 'anthropic';
+  model: string;
+  label: string;
+  badge: string;
+}
+
+export const QUICK_MODEL_OPTIONS: QuickModelOption[] = [
+  {
+    provider: 'gemini',
+    model: 'gemini-3.8-flash',
+    label: 'Gemini 3.8 Flash',
+    badge: 'Fast • Vision',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-3.6-flash',
+    label: 'Gemini 3.6 Flash',
+    badge: 'Efficient',
+  },
+  {
+    provider: 'gemini',
+    model: 'gemini-3.1-pro-preview',
+    label: 'Gemini 3.1 Pro',
+    badge: 'Reasoning',
+  },
+  {
+    provider: 'groq',
+    model: 'llama-3.3-70b-versatile',
+    label: 'Groq • Llama 3.3 70B',
+    badge: '500 tok/s',
+  },
+  {
+    provider: 'groq',
+    model: 'llama-3.1-8b-instant',
+    label: 'Groq • Llama 3.1 8B',
+    badge: 'Instant',
+  },
+  {
+    provider: 'openrouter',
+    model: 'openrouter/free',
+    label: 'OpenRouter • Auto Free',
+    badge: '0$ Failover',
+  },
+  {
+    provider: 'openrouter',
+    model: 'google/gemma-4-31b-it:free',
+    label: 'OpenRouter • Gemma 4 31B',
+    badge: 'Free',
+  },
+  {
+    provider: 'anthropic',
+    model: 'claude-3-7-sonnet-20250219',
+    label: 'Claude 3.7 Sonnet',
+    badge: 'Cached',
+  },
+];
+
+const QUICK_PROMPTS = [
+  {
+    label: '🎓 Coursera: Open & Complete Section',
+    prompt:
+      'Open the current study material or video lecture, complete any video media, scroll down if needed, and click Mark as complete or Next.',
+  },
+  {
+    label: '📚 NetAcad: Advance Module',
+    prompt:
+      'Expand the current module accordion, open the active lesson, scroll through the content, and click Next or Complete.',
+  },
+  {
+    label: '🔥 GitHub Trending TS',
+    prompt: 'Find top trending TypeScript repo on GitHub',
+  },
+];
+
+interface Props {
+  state: AgentSessionState;
+  prompt: string;
+  onPromptChange: (val: string) => void;
+  onStart: (overrideGoal?: string) => void;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
+  onReset: () => void;
+  selectedProvider?: string;
+  selectedModel?: string;
+  onSelectModel?: (provider: QuickModelOption['provider'], model: string) => void;
+  onOpenVault?: () => void;
+}
+
+export function TaskStream({
+  state,
+  prompt,
+  onPromptChange,
+  onStart,
+  onPause,
+  onResume,
+  onStop,
+  onReset,
+  selectedProvider = 'gemini',
+  selectedModel = 'gemini-3.8-flash',
+  onSelectModel,
+  onOpenVault,
+}: Props): React.JSX.Element {
+  const [expandedSteps, setExpandedSteps] = useState<Record<number, boolean>>({});
+  const streamEndRef = useRef<HTMLDivElement | null>(null);
+
+  const isRunning = state.status === 'running';
+  const isPaused = state.status === 'paused';
+  const isWaiting = state.status === 'waiting_approval';
+  const isCompleted = state.status === 'completed';
+  const isError = state.status === 'error';
+
+  const thinkingSteps: ThinkingStep[] =
+    state.thinkingHistory && state.thinkingHistory.length > 0
+      ? state.thinkingHistory
+      : state.currentThought
+      ? [
+          {
+            stepNumber: state.stepNumber || 1,
+            thought: state.currentThought,
+            actions: state.pendingActions || [],
+            executedTraces: state.completedTraces,
+            status: isRunning ? 'thinking' : isError ? 'error' : 'done',
+            timestamp: Date.now(),
+            provider: state.activeProvider,
+            model: state.activeModel,
+          },
+        ]
+      : [];
+
+  useEffect(() => {
+    streamEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [thinkingSteps.length, state.status, state.currentThought]);
+
+  const toggleStep = (stepNum: number) => {
+    setExpandedSteps((prev) => ({
+      ...prev,
+      [stepNum]: !(prev[stepNum] ?? true),
+    }));
+  };
+
+  const activeProviderDisplay = state.activeProvider || selectedProvider;
+  const activeModelDisplay = state.activeModel || selectedModel;
+  const currentDropdownValue = `${activeProviderDisplay}::${activeModelDisplay}`;
+
+  return (
+    <div className="flex-1 flex flex-col gap-2.5 overflow-hidden">
+      {/* Inline Model Selection Bar inside Main Chat Section */}
+      <div className="bg-vision-panel/95 border border-vision-border rounded-xl px-2.5 py-2 flex items-center justify-between gap-2 shadow-md">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <div className="w-2 h-2 rounded-full bg-vision-gold mindstone-glow shrink-0" />
+          <Cpu className="w-3.5 h-3.5 text-vision-tealBright shrink-0" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+            Mind Core:
+          </span>
+          <select
+            aria-label="Select AI Model"
+            value={
+              QUICK_MODEL_OPTIONS.some((o) => `${o.provider}::${o.model}` === currentDropdownValue)
+                ? currentDropdownValue
+                : `${selectedProvider}::${selectedModel}`
+            }
+            onChange={(e) => {
+              const [prov, mod] = e.target.value.split('::');
+              if (prov && mod && onSelectModel) {
+                onSelectModel(prov as QuickModelOption['provider'], mod);
+              }
+            }}
+            className="bg-vision-bg border border-vision-border hover:border-vision-crimson/60 focus:border-vision-gold rounded-lg px-2 py-1 text-[11px] font-medium text-slate-100 truncate flex-1 focus:outline-none transition-colors"
+          >
+            {QUICK_MODEL_OPTIONS.map((opt) => (
+              <option key={`${opt.provider}::${opt.model}`} value={`${opt.provider}::${opt.model}`}>
+                {opt.label} ({opt.badge})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {onOpenVault && (
+          <button
+            type="button"
+            onClick={onOpenVault}
+            className="text-[10px] px-2 py-1 rounded-md bg-vision-card hover:bg-vision-border text-vision-gold border border-vision-gold/30 font-semibold shrink-0 transition-colors"
+            title="Configure API Keys & All Provider Models"
+          >
+            Keys ⚙
+          </button>
+        )}
+      </div>
+
+      {/* Main Conversational Chat & Thinking Steps Stream */}
+      <div className="flex-1 bg-vision-panel/90 border border-vision-border rounded-xl p-3 shadow-inner flex flex-col gap-2.5 overflow-y-auto">
+        {/* Stream Status Header */}
+        <div className="flex items-center justify-between border-b border-vision-border/80 pb-2">
+          <div className="flex items-center gap-2">
+            {isRunning && <Loader2 className="w-3.5 h-3.5 text-vision-gold animate-spin" />}
+            {isCompleted && <CheckCircle className="w-3.5 h-3.5 text-vision-tealBright" />}
+            {isError && <AlertCircle className="w-3.5 h-3.5 text-vision-crimsonLight" />}
+            {!isRunning && !isCompleted && !isError && (
+              <Brain className="w-3.5 h-3.5 text-vision-gold" />
+            )}
+            <span className="text-xs font-bold text-slate-100 tracking-tight">
+              {isRunning
+                ? `Synthesizing Step ${state.stepNumber} of ${state.maxSteps}`
+                : isCompleted
+                ? 'Mission Accomplished'
+                : isError
+                ? 'Execution Interrupted'
+                : 'Synthezoid Reasoning Stream'}
+            </span>
+          </div>
+
+          <span
+            className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+              isRunning
+                ? 'bg-vision-gold/15 text-vision-gold border border-vision-gold/40 animate-pulse'
+                : isWaiting
+                ? 'bg-amber-950 text-amber-300 border border-amber-700'
+                : isCompleted
+                ? 'bg-teal-950/90 text-vision-tealBright border border-vision-teal/40'
+                : isError
+                ? 'bg-rose-950/90 text-vision-crimsonLight border border-vision-crimson/50'
+                : 'bg-vision-card text-slate-400 border border-vision-border'
+            }`}
+          >
+            {state.status.replace('_', ' ')}
+          </span>
+        </div>
+
+        {/* User Goal Chat Bubble */}
+        {state.goal && (
+          <div className="self-end max-w-[90%] bg-gradient-to-br from-vision-crimson/90 to-rose-900/90 border border-vision-crimsonLight/40 text-white rounded-2xl rounded-tr-xs px-3 py-2 text-xs shadow-md">
+            <div className="text-[9px] uppercase tracking-wider text-rose-200/90 font-bold mb-0.5">
+              Operator Directive
+            </div>
+            <div className="leading-relaxed select-text">{state.goal}</div>
+          </div>
+        )}
+
+        {/* Model Failover Notice */}
+        {state.fallbackNotice && (
+          <div className="bg-amber-950/60 border border-vision-gold/50 rounded-lg p-2 text-[11px] text-amber-200 flex items-center gap-2">
+            <span className="text-vision-gold font-bold shrink-0">⚡ Auto-Failover:</span>
+            <span className="truncate">{state.fallbackNotice}</span>
+          </div>
+        )}
+
+        {/* Chronological Mind Stone Thinking Steps Timeline */}
+        {thinkingSteps.length === 0 && !state.error ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center py-6 px-3 gap-2">
+            <div className="w-9 h-9 rounded-full bg-vision-card border border-vision-gold/40 flex items-center justify-center mindstone-glow">
+              <Sparkles className="w-4 h-4 text-vision-gold" />
+            </div>
+            <div className="text-xs font-bold text-slate-200">
+              Vision AI Mind Stone Online
+            </div>
+            <p className="text-[11px] text-slate-400 max-w-[230px] leading-relaxed">
+               command Vision to navigate Coursera, NetAcad, YouTube, or any web app. Live thinking steps and DOM actions will stream here.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {thinkingSteps.map((step) => {
+              const isExpanded = expandedSteps[step.stepNumber] ?? true;
+              const traces = step.executedTraces || [];
+
+              return (
+                <div
+                  key={step.stepNumber}
+                  className="bg-vision-card/90 border border-vision-border rounded-xl overflow-hidden transition-all"
+                >
+                  {/* Thinking Step Header */}
+                  <button
+                    type="button"
+                    onClick={() => toggleStep(step.stepNumber)}
+                    className="w-full px-2.5 py-2 flex items-center justify-between bg-vision-bg/60 hover:bg-vision-bg text-left transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isExpanded ? (
+                        <ChevronDown className="w-3.5 h-3.5 text-vision-gold shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      )}
+                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-vision-gold/15 text-vision-gold border border-vision-gold/30 shrink-0">
+                        STEP {step.stepNumber}
+                      </span>
+                      <span className="text-[11px] text-slate-200 font-medium truncate">
+                        {step.thought}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      {step.status === 'thinking' && (
+                        <span className="text-[9px] text-vision-gold font-mono flex items-center gap-1">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> thinking
+                        </span>
+                      )}
+                      {step.status === 'acting' && (
+                        <span className="text-[9px] text-vision-tealBright font-mono animate-pulse">
+                          acting...
+                        </span>
+                      )}
+                      {step.status === 'done' && (
+                        <span className="text-[9px] text-vision-tealBright font-mono">
+                          ✓ {traces.length || step.actions.length} act
+                        </span>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Expanded Thinking Rationale & Actions */}
+                  {isExpanded && (
+                    <div className="p-2.5 flex flex-col gap-2 border-t border-vision-border/60 text-xs">
+                      <div className="flex items-start gap-2 text-slate-200 leading-relaxed">
+                        <Brain className="w-3.5 h-3.5 text-vision-gold shrink-0 mt-0.5" />
+                        <div className="select-text">
+                          <span className="font-semibold text-vision-gold text-[10px] uppercase tracking-wider block mb-0.5">
+                            Reasoning ({step.provider || activeProviderDisplay})
+                          </span>
+                          {step.thought}
+                        </div>
+                      </div>
+
+                      {/* Planned or Executed Actions inside this Step */}
+                      {(traces.length > 0 || step.actions.length > 0) && (
+                        <div className="flex flex-col gap-1 pl-5">
+                          {(traces.length > 0
+                            ? traces
+                            : step.actions.map((a) => ({ action: a, success: true, timestamp: 0 }))
+                          ).map((t, idx) => (
+                            <div
+                              key={idx}
+                              className="bg-vision-bg/90 border border-vision-border/80 rounded-lg px-2 py-1 flex items-center justify-between text-[11px] font-mono"
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Terminal className="w-3 h-3 text-vision-tealBright shrink-0" />
+                                <span className="text-vision-tealBright font-bold uppercase">
+                                  {t.action.type}
+                                </span>
+                                {t.action.id !== undefined && (
+                                  <span className="text-vision-gold">[{t.action.id}]</span>
+                                )}
+                                {t.action.value && (
+                                  <span className="text-slate-300 truncate max-w-[135px]">
+                                    &quot;{t.action.value}&quot;
+                                  </span>
+                                )}
+                              </div>
+                              <span
+                                className={`text-[10px] shrink-0 ${
+                                  t.success ? 'text-vision-tealBright' : 'text-vision-crimsonLight'
+                                }`}
+                              >
+                                {t.success ? '✓ OK' : '✕ ERR'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Final Completed Answer Card */}
+        {isCompleted && state.currentThought && (
+          <div className="bg-gradient-to-br from-teal-950/60 via-vision-card to-vision-panel border border-vision-teal/50 rounded-xl p-3 text-xs text-slate-100 flex flex-col gap-1.5 shadow-lg">
+            <div className="flex items-center gap-1.5 text-vision-tealBright font-bold text-[11px] uppercase tracking-wider">
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span>Final Synthezoid Outcome</span>
+            </div>
+            <div className="font-sans leading-relaxed whitespace-pre-wrap select-text">
+              {state.currentThought}
+            </div>
+          </div>
+        )}
+
+        {/* Error Banner */}
+        {state.error && (
+          <div className="bg-rose-950/60 border border-vision-crimson/60 rounded-xl p-2.5 text-xs text-rose-200">
+            <span className="font-bold text-vision-crimsonLight block mb-0.5">System Alert:</span>
+            {state.error}
+          </div>
+        )}
+
+        <div ref={streamEndRef} />
+      </div>
+
+      {/* Bottom Chat Input Composer & Execution Controls */}
+      <div className="bg-vision-panel border border-vision-border rounded-xl p-2.5 shadow-lg flex flex-col gap-2">
+        {/* Quick LMS & Browser Presets */}
+        {state.status === 'idle' && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            {QUICK_PROMPTS.map((item, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onPromptChange(item.prompt)}
+                className="text-[10px] bg-vision-card hover:bg-vision-border/80 text-slate-300 hover:text-vision-gold border border-vision-border px-2 py-1 rounded-lg shrink-0 transition-colors flex items-center gap-1"
+              >
+                {i === 0 && <GraduationCap className="w-3 h-3 text-vision-gold" />}
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="relative flex items-end gap-1.5">
+          <textarea
+            value={prompt}
+            onChange={(e) => onPromptChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (prompt.trim() && !isRunning && !isWaiting) {
+                  onStart();
+                }
+              }
+            }}
+            disabled={isRunning || isWaiting}
+            rows={2}
+            placeholder="Command Vision AI (e.g. 'Open study material, complete lecture video, and click Mark as complete')..."
+            className="w-full bg-vision-bg border border-vision-border focus:border-vision-gold rounded-xl p-2.5 pr-9 text-xs text-slate-100 placeholder-slate-500 focus:outline-none resize-none font-sans"
+          />
+        </div>
+
+        {/* Action Buttons Bar */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            {isRunning && (
+              <button
+                type="button"
+                onClick={onPause}
+                className="flex items-center gap-1 px-3 py-1.5 bg-amber-600/90 hover:bg-amber-500 text-slate-950 rounded-lg text-xs font-bold transition-colors"
+              >
+                <Pause className="w-3.5 h-3.5" /> Pause
+              </button>
+            )}
+            {isPaused && (
+              <button
+                type="button"
+                onClick={onResume}
+                className="flex items-center gap-1 px-3 py-1.5 bg-vision-teal hover:bg-vision-tealBright text-slate-950 rounded-lg text-xs font-bold transition-colors"
+              >
+                <Play className="w-3.5 h-3.5 fill-slate-950" /> Resume
+              </button>
+            )}
+            {(isRunning || isPaused || isWaiting) && (
+              <button
+                type="button"
+                onClick={onStop}
+                className="flex items-center gap-1 px-3 py-1.5 bg-rose-950 hover:bg-rose-900 text-rose-200 border border-vision-crimson/60 rounded-lg text-xs font-semibold transition-colors"
+              >
+                <Square className="w-3.5 h-3.5" /> Stop
+              </button>
+            )}
+            {(isCompleted || isError || thinkingSteps.length > 0) && !isRunning && (
+              <button
+                type="button"
+                onClick={onReset}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-vision-card hover:bg-vision-border text-slate-300 hover:text-white border border-vision-border rounded-lg text-xs font-semibold transition-colors"
+                title="Clear chat history and start fresh"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Clear
+              </button>
+            )}
+          </div>
+
+          {!isRunning && !isPaused && !isWaiting && (
+            <button
+              type="button"
+              onClick={() => onStart()}
+              disabled={!prompt.trim()}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-vision-crimson via-rose-500 to-vision-gold hover:from-rose-500 hover:to-yellow-400 disabled:opacity-40 text-white font-bold rounded-lg text-xs shadow-md transition-all ml-auto"
+            >
+              <Send className="w-3 h-3" />
+              {isCompleted ? 'Run Next Directive' : isError ? 'Retry Directive' : 'Launch Vision AI'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+================
+File: entrypoints/sidepanel/components/PageInspectorPanel.tsx
+================
+import React, { useState, useEffect, useCallback } from 'react';
+import { PageInspectionSummary } from '../../../src/lib/agent/types';
+import {
+  Eye,
+  RefreshCw,
+  PlayCircle,
+  CheckSquare,
+  ArrowDownCircle,
+  BookOpen,
+  Sparkles,
+  Layers,
+} from 'lucide-react';
+
+interface Props {
+  tabId: number;
+  onLaunchMacroGoal: (goal: string) => void;
+}
+
+export function PageInspectorPanel({ tabId, onLaunchMacroGoal }: Props): React.JSX.Element {
+  const [inspection, setInspection] = useState<PageInspectionSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const inspectCurrentTab = useCallback(() => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
+    setLoading(true);
+    chrome.runtime.sendMessage({ type: 'INSPECT_TAB_DOM', tabId }, (res) => {
+      setLoading(false);
+      if (chrome.runtime.lastError || !res || res.error) return;
+      setInspection(res as PageInspectionSummary);
+    });
+  }, [tabId]);
+
+  useEffect(() => {
+    inspectCurrentTab();
+  }, [inspectCurrentTab]);
+
+  return (
+    <div className="flex-1 flex flex-col gap-3 overflow-y-auto pr-0.5">
+      {/* 1-Click Coursera / NetAcad / LMS Autopilot Macros */}
+      <div className="bg-vision-panel border border-vision-border rounded-xl p-3 shadow-md flex flex-col gap-2.5">
+        <div className="flex items-center justify-between border-b border-vision-border pb-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-vision-gold" />
+            <h2 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
+              1-Click LMS & Course Autopilot
+            </h2>
+          </div>
+          <span className="text-[10px] bg-vision-crimson/20 text-vision-crimsonLight border border-vision-crimson/40 px-2 py-0.5 rounded-full font-mono">
+            Coursera • NetAcad
+          </span>
+        </div>
+
+        <p className="text-[11px] text-slate-400 leading-relaxed">
+          Instant multi-step directives tailored for dynamic course players, inner scrollable panes, and HTML5 lecture media.
+        </p>
+
+        <div className="grid grid-cols-1 gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              onLaunchMacroGoal(
+                'Complete the current video lecture using complete_media, click Mark as complete if present, and click Next to advance to the next item.'
+              )
+            }
+            className="flex items-center justify-between p-2.5 rounded-xl bg-vision-card hover:bg-vision-border/80 border border-vision-border hover:border-vision-gold/50 text-left transition-all group"
+          >
+            <div className="flex items-center gap-2.5">
+              <PlayCircle className="w-4 h-4 text-vision-gold shrink-0" />
+              <div>
+                <div className="text-xs font-bold text-slate-100 group-hover:text-vision-gold">
+                  Complete Video Lecture & Advance
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Fast-forwards HTML5 video, triggers ended state & clicks Next/Complete
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onLaunchMacroGoal(
+                'Scroll down the reading or study material container until Mark as complete is visible, click Mark as complete, and then click Next.'
+              )
+            }
+            className="flex items-center justify-between p-2.5 rounded-xl bg-vision-card hover:bg-vision-border/80 border border-vision-border hover:border-vision-teal/50 text-left transition-all group"
+          >
+            <div className="flex items-center gap-2.5">
+              <CheckSquare className="w-4 h-4 text-vision-tealBright shrink-0" />
+              <div>
+                <div className="text-xs font-bold text-slate-100 group-hover:text-vision-tealBright">
+                  Read Study Material & Mark Complete
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Scrolls inner reading pane to the bottom and marks section completed
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onLaunchMacroGoal(
+                'Expand the next uncompleted module or lesson in the course syllabus, open the study material or video lecture, and complete it.'
+              )
+            }
+            className="flex items-center justify-between p-2.5 rounded-xl bg-vision-card hover:bg-vision-border/80 border border-vision-border hover:border-vision-crimsonLight/50 text-left transition-all group"
+          >
+            <div className="flex items-center gap-2.5">
+              <BookOpen className="w-4 h-4 text-vision-crimsonLight shrink-0" />
+              <div>
+                <div className="text-xs font-bold text-slate-100 group-hover:text-vision-crimsonLight">
+                  Open Next Unfinished Module/Lesson
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Navigates course sidebar or NetAcad Shadow DOM tree
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onLaunchMacroGoal('Scroll down the current page and summarize the key points.')
+            }
+            className="flex items-center justify-between p-2.5 rounded-xl bg-vision-card hover:bg-vision-border/80 border border-vision-border text-left transition-all group"
+          >
+            <div className="flex items-center gap-2.5">
+              <ArrowDownCircle className="w-4 h-4 text-sky-400 shrink-0" />
+              <div>
+                <div className="text-xs font-bold text-slate-100">
+                  Smart Scroll & Summarize Page
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Scrolls inner containers and extracts a concise digest
+                </div>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* LiveSynthezoid DOM X-Ray Inspector */}
+      <div className="flex-1 bg-vision-panel border border-vision-border rounded-xl p-3 shadow-md flex flex-col gap-2 overflow-hidden">
+        <div className="flex items-center justify-between border-b border-vision-border pb-2">
+          <div className="flex items-center gap-2">
+            <Eye className="w-4 h-4 text-vision-tealBright" />
+            <span className="text-xs font-bold text-slate-100 uppercase tracking-wider">
+              Live DOM X-Ray Scanner
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={inspectCurrentTab}
+            className="flex items-center gap-1 text-[10px] bg-vision-card hover:bg-vision-border text-slate-300 px-2 py-1 rounded-md border border-vision-border transition-colors"
+          >
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin text-vision-gold' : ''}`} />
+            Rescan
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between text-[11px] bg-vision-card px-2.5 py-1.5 rounded-lg border border-vision-border">
+          <span className="text-slate-400 flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-vision-gold" />
+            Indexed Interactive Nodes:
+          </span>
+          <span className="font-mono font-bold text-vision-tealBright">
+            {inspection?.interactiveCount ?? 0} [ID] badges ready
+          </span>
+        </div>
+
+        <pre className="flex-1 bg-vision-bg border border-vision-border rounded-lg p-2.5 text-[10px] font-mono text-slate-300 overflow-auto whitespace-pre-wrap select-text leading-relaxed">
+          {inspection?.distilledPreview ||
+            'Click Rescan on any active webpage to preview the ultra-low-token distilled DOM tree.'}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+================
+File: entrypoints/sidepanel/components/TokenTelemetryHUD.tsx
+================
+import React from 'react';
+import { TokenMetrics } from '../../../src/lib/agent/types';
+import { Zap, ShieldCheck, Cpu, Layers, TrendingDown } from 'lucide-react';
+
+interface Props {
+  metrics: TokenMetrics;
+  activeTier?: number;
+  activeProvider?: string;
+  activeModel?: string;
+  stepCount?: number;
+  traceCount?: number;
+}
+
+export function TokenTelemetryHUD({
+  metrics,
+  activeTier = 1,
+  activeProvider = 'gemini',
+  activeModel,
+  stepCount = 0,
+  traceCount = 0,
+}: Props): React.JSX.Element {
+  const discount = metrics.estimatedCostDiscountPercent || 0;
+  const shortModel = activeModel
+    ? activeModel.split('/').pop()?.replace(':free', ' (free)')
+    : undefined;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="bg-gradient-to-br from-vision-panel via-vision-card to-vision-panel rounded-xl border border-vision-border p-3.5 shadow-lg">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-vision-gold">
+            <Zap className="w-4 h-4 text-vision-gold" />
+            <span>Mind Stone Token Telemetry</span>
+          </div>
+          <span className="flex items-center gap-1 text-[11px] font-bold text-vision-tealBright bg-vision-teal/15 border border-vision-teal/40 px-2.5 py-0.5 rounded-full">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            {discount}% Saved
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 text-center mb-3">
+          <div className="bg-vision-bg/90 rounded-lg p-2.5 border border-vision-border">
+            <div className="text-[10px] text-slate-400">Cached Prefix</div>
+            <div className="text-sm font-bold text-vision-tealBright font-mono mt-0.5">
+              {metrics.cachedPrefixTokens.toLocaleString()}
+            </div>
+            <div className="text-[9px] text-slate-500">90% discount</div>
+          </div>
+          <div className="bg-vision-bg/90 rounded-lg p-2.5 border border-vision-border">
+            <div className="text-[10px] text-slate-400">Fresh Delta</div>
+            <div className="text-sm font-bold text-vision-gold font-mono mt-0.5">
+              {metrics.freshTokens.toLocaleString()}
+            </div>
+            <div className="text-[9px] text-slate-500">&lt;100 tok/step</div>
+          </div>
+          <div className="bg-vision-bg/90 rounded-lg p-2.5 border border-vision-border">
+            <div className="text-[10px] text-slate-400">Total Billed</div>
+            <div className="text-sm font-bold text-vision-crimsonLight font-mono mt-0.5">
+              {metrics.totalEstimatedTokens.toLocaleString()}
+            </div>
+            <div className="text-[9px] text-slate-500">effective</div>
+          </div>
+        </div>
+
+        {/* Visual Token Savings Bar */}
+        <div className="w-full bg-vision-bg h-2 rounded-full overflow-hidden border border-vision-border">
+          <div
+            className="bg-gradient-to-r from-vision-crimson via-vision-gold to-vision-tealBright h-full transition-all duration-500 rounded-full"
+            style={{ width: `${Math.max(10, discount)}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Engine Diagnostics Card */}
+      <div className="bg-vision-panel border border-vision-border rounded-xl p-3.5 flex flex-col gap-2.5 text-xs">
+        <div className="flex items-center gap-1.5 text-slate-300 font-bold uppercase tracking-wider text-[11px]">
+          <Cpu className="w-3.5 h-3.5 text-vision-crimsonLight" />
+          <span>Active Routing & Compression Architecture</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-vision-card border border-vision-border rounded-lg p-2.5">
+            <div className="text-[10px] text-slate-400">Active Provider / Tier</div>
+            <div className="text-xs font-bold text-slate-100 font-mono mt-0.5 uppercase">
+              {activeProvider} • Tier {activeTier}
+            </div>
+          </div>
+          <div className="bg-vision-card border border-vision-border rounded-lg p-2.5">
+            <div className="text-[10px] text-slate-400">Active Model</div>
+            <div className="text-xs font-bold text-vision-gold font-mono mt-0.5 truncate">
+              {shortModel || 'Default Workhorse'}
+            </div>
+          </div>
+          <div className="bg-vision-card border border-vision-border rounded-lg p-2.5">
+            <div className="text-[10px] text-slate-400 flex items-center gap-1">
+              <Layers className="w-3 h-3 text-vision-tealBright" /> Steps Executed
+            </div>
+            <div className="text-xs font-bold text-slate-100 font-mono mt-0.5">{stepCount}</div>
+          </div>
+          <div className="bg-vision-card border border-vision-border rounded-lg p-2.5">
+            <div className="text-[10px] text-slate-400 flex items-center gap-1">
+              <TrendingDown className="w-3 h-3 text-vision-gold" /> DOM Actions Run
+            </div>
+            <div className="text-xs font-bold text-slate-100 font-mono mt-0.5">{traceCount}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+================
 File: entrypoints/sidepanel/App.tsx
 ================
 import React, { useState, useEffect, useCallback } from 'react';
@@ -2924,9 +4168,20 @@ import { TokenTelemetryHUD } from './components/TokenTelemetryHUD';
 import { ApiKeyVault } from './components/ApiKeyVault';
 import { SkillsDrawer } from './components/SkillsDrawer';
 import { ApprovalModal } from './components/ApprovalModal';
-import { TaskStream } from './components/TaskStream';
+import { TaskStream, QuickModelOption } from './components/TaskStream';
+import { PageInspectorPanel } from './components/PageInspectorPanel';
 import { SiteSkill } from '../../src/lib/skills/skillStore';
-import { KeyRound, Sparkles, Orbit, Globe, RefreshCw, AlertTriangle, Layers } from 'lucide-react';
+import {
+  KeyRound,
+  Sparkles,
+  RefreshCw,
+  AlertTriangle,
+  Layers,
+  MessageSquare,
+  Activity,
+  Eye,
+  Shield,
+} from 'lucide-react';
 
 const INITIAL_STATE: AgentSessionState = {
   status: 'idle',
@@ -2944,6 +4199,7 @@ const INITIAL_STATE: AgentSessionState = {
     estimatedCostDiscountPercent: 0,
   },
   completedTraces: [],
+  thinkingHistory: [],
 };
 
 interface ActiveTabInfo {
@@ -2953,7 +4209,10 @@ interface ActiveTabInfo {
   isInternal?: boolean;
 }
 
+type NavSection = 'chat' | 'inspector' | 'telemetry' | 'skills';
+
 export default function App(): React.JSX.Element {
+  const [activeSection, setActiveSection] = useState<NavSection>('chat');
   const [state, setState] = useState<AgentSessionState>(INITIAL_STATE);
   const [promptsByTab, setPromptsByTab] = useState<Record<number, string>>({});
   const [vaultOpen, setVaultOpen] = useState(false);
@@ -2961,6 +4220,8 @@ export default function App(): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<ActiveTabInfo>({});
   const [tabSessions, setTabSessions] = useState<TabSessionSummary[]>([]);
   const [pinnedTabId, setPinnedTabId] = useState<number | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string>('gemini');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.8-flash');
 
   const currentTabId = pinnedTabId ?? activeTab.id ?? 0;
   const prompt = promptsByTab[currentTabId] ?? '';
@@ -2968,6 +4229,22 @@ export default function App(): React.JSX.Element {
   const setPrompt = (val: string) => {
     setPromptsByTab((prev) => ({ ...prev, [currentTabId]: val }));
   };
+
+  // Load saved model preference for the inline chat dropdown
+  useEffect(() => {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get('modelRoutingConfig').then((data) => {
+        const cfg = data?.modelRoutingConfig;
+        if (cfg) {
+          const prov = cfg.preferredTier1Provider || 'gemini';
+          setSelectedProvider(prov);
+          if (prov === 'gemini' && cfg.geminiModel) setSelectedModel(cfg.geminiModel);
+          else if (prov === 'groq' && cfg.groqModel) setSelectedModel(cfg.groqModel);
+          else if (prov === 'openrouter' && cfg.openRouterModel) setSelectedModel(cfg.openRouterModel);
+        }
+      });
+    }
+  }, [vaultOpen]);
 
   const fetchTabState = useCallback((targetTabId: number) => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage || targetTabId <= 0) return;
@@ -3073,10 +4350,23 @@ export default function App(): React.JSX.Element {
     }
   };
 
+  const handleQuickSelectModel = (provider: QuickModelOption['provider'], model: string) => {
+    setSelectedProvider(provider);
+    setSelectedModel(model);
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({
+        type: 'SET_ACTIVE_MODEL',
+        provider,
+        model,
+      });
+    }
+  };
+
   const handleStartTask = async (taskGoal?: string) => {
     const goalToRun = taskGoal ?? prompt;
     if (!goalToRun.trim()) return;
 
+    setActiveSection('chat');
     let targetTabId = currentTabId;
 
     if (!pinnedTabId && typeof chrome !== 'undefined' && chrome.tabs?.query) {
@@ -3181,19 +4471,19 @@ export default function App(): React.JSX.Element {
   );
 
   return (
-    <div className="flex flex-col h-screen w-full bg-orbit-dark text-slate-100 p-3.5 select-none font-sans overflow-hidden">
-      {/* Top Header */}
-      <header className="flex items-center justify-between border-b border-orbit-border pb-3 mb-2.5">
-        <div className="flex items-center gap-2">
-          <div className="relative flex items-center justify-center">
-            <Orbit className="w-5 h-5 text-orbit-neon animate-spin" style={{ animationDuration: '8s' }} />
-            <div className="w-2 h-2 rounded-full bg-orbit-neon absolute" />
+    <div className="flex flex-col h-screen w-full bg-vision-bg text-slate-100 p-3 select-none font-sans overflow-hidden">
+      {/* Marvel's Vision Synthezoid Header */}
+      <header className="flex items-center justify-between border-b border-vision-border pb-2.5 mb-2">
+        <div className="flex items-center gap-2.5">
+          {/* Mind Stone Diamond Emblem */}
+          <div className="relative flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-vision-crimson via-rose-800 to-vision-panel border border-vision-gold/60 mindstone-glow">
+            <div className="w-2.5 h-2.5 rotate-45 bg-vision-gold shadow-sm" />
           </div>
           <div>
-            <h1 className="text-sm font-black tracking-tight flex items-center gap-1.5">
-              Vision AI
-              <span className="text-[9px] bg-slate-800 text-orbit-accent border border-slate-700 px-1.5 py-0.2 rounded font-mono font-normal">
-                v0.2 Multi-Tab
+            <h1 className="text-sm font-black tracking-tight flex items-center gap-1.5 text-white">
+              VISION AI
+              <span className="text-[9px] bg-vision-crimson/20 text-vision-gold border border-vision-crimson/40 px-1.5 py-0.2 rounded font-mono font-semibold">
+                SYNTHEZOID v2.0
               </span>
             </h1>
           </div>
@@ -3202,36 +4492,36 @@ export default function App(): React.JSX.Element {
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setSkillsOpen(true)}
-            className="flex items-center gap-1 text-xs bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-600 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white transition-colors"
-            title="Saved 0-Token Domain Skills"
+            className="flex items-center gap-1 text-xs bg-vision-panel hover:bg-vision-card border border-vision-border hover:border-vision-teal/50 px-2 py-1.5 rounded-lg text-slate-200 hover:text-vision-tealBright transition-colors"
+            title="Saved 0-Token Domain Reflexes"
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <Sparkles className="w-3.5 h-3.5 text-vision-tealBright" />
             <span className="text-[11px] font-semibold">Skills</span>
           </button>
           <button
             onClick={() => setVaultOpen(true)}
-            className="flex items-center gap-1 text-xs bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-600 px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white transition-colors"
-            title="API Keys Vault"
+            className="flex items-center gap-1 text-xs bg-vision-panel hover:bg-vision-card border border-vision-border hover:border-vision-gold/50 px-2 py-1.5 rounded-lg text-slate-200 hover:text-vision-gold transition-colors"
+            title="API Keys & Provider Vault"
           >
-            <KeyRound className="w-3.5 h-3.5 text-orbit-accent" />
+            <KeyRound className="w-3.5 h-3.5 text-vision-gold" />
             <span className="text-[11px] font-semibold">Vault</span>
           </button>
         </div>
       </header>
 
-      {/* Multi-Tab Target Selector & Independent Tab Agent Switcher */}
-      <div className="flex flex-col gap-1.5 bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-2 mb-2.5 text-[11px] shadow-sm">
+      {/* Multi-Tab Target Bar */}
+      <div className="flex flex-col gap-1.5 bg-vision-panel/90 border border-vision-border rounded-xl px-2.5 py-1.5 mb-2 text-[11px]">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            <Layers className="w-3.5 h-3.5 text-orbit-accent shrink-0" />
-            <span className="text-slate-400 shrink-0 font-semibold">Target Tab:</span>
+            <Layers className="w-3.5 h-3.5 text-vision-crimsonLight shrink-0" />
+            <span className="text-slate-400 shrink-0 font-semibold">Tab:</span>
             <select
               value={pinnedTabId ? String(pinnedTabId) : 'auto'}
               onChange={(e) => handleSelectTargetTab(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-[11px] text-slate-200 truncate flex-1 focus:border-orbit-neon focus:outline-none"
+              className="bg-vision-bg border border-vision-border rounded-lg px-2 py-0.5 text-[11px] text-slate-200 truncate flex-1 focus:border-vision-gold focus:outline-none"
             >
               <option value="auto">
-                Follow Active Tab ({activeTab.title?.slice(0, 26) || 'Current'})
+                Active Tab ({activeTab.title?.slice(0, 28) || 'Current'})
               </option>
               {tabSessions
                 .filter((t) => !t.isInternal)
@@ -3245,66 +4535,185 @@ export default function App(): React.JSX.Element {
           </div>
           <button
             onClick={refreshActiveTab}
-            title="Refresh open tabs list"
-            className="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition-colors shrink-0"
+            title="Refresh open browser tabs"
+            className="text-slate-400 hover:text-vision-gold p-1 rounded hover:bg-vision-card transition-colors shrink-0"
           >
             <RefreshCw className="w-3 h-3" />
           </button>
         </div>
 
-        {/* Active Background Tab Agents Pill Bar */}
         {runningBackgroundTabs.length > 0 && (
-          <div className="flex items-center gap-1.5 overflow-x-auto pt-1 border-t border-slate-800/80">
-            <span className="text-[10px] text-emerald-400 font-semibold shrink-0">Active Agents:</span>
+          <div className="flex items-center gap-1.5 overflow-x-auto pt-1 border-t border-vision-border/70">
+            <span className="text-[10px] text-vision-gold font-semibold shrink-0">Running:</span>
             {runningBackgroundTabs.map((t) => (
               <button
                 key={t.tabId}
                 onClick={() => handleSelectTargetTab(String(t.tabId))}
                 className={`text-[10px] px-2 py-0.5 rounded-full border flex items-center gap-1 shrink-0 transition-colors ${
                   currentTabId === t.tabId
-                    ? 'bg-emerald-950 text-emerald-200 border-emerald-500'
-                    : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-emerald-700'
+                    ? 'bg-vision-crimson/30 text-white border-vision-gold'
+                    : 'bg-vision-bg text-slate-300 border-vision-border hover:border-vision-gold/50'
                 }`}
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="w-1.5 h-1.5 rounded-full bg-vision-gold animate-ping" />
                 <span className="truncate max-w-[95px]">{t.title}</span>
-                <span className="text-emerald-400 font-mono">S{t.stepNumber}</span>
+                <span className="text-vision-gold font-mono">S{t.stepNumber}</span>
               </button>
             ))}
           </div>
         )}
       </div>
 
+      {/* Segmented Section Switcher (Chat | Vision X-Ray | Telemetry | Vault) */}
+      <nav className="grid grid-cols-4 gap-1 bg-vision-panel p-1 rounded-xl border border-vision-border mb-2.5 shrink-0">
+        <button
+          type="button"
+          onClick={() => setActiveSection('chat')}
+          className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+            activeSection === 'chat'
+              ? 'bg-gradient-to-r from-vision-crimson to-rose-700 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <MessageSquare className="w-3 h-3" />
+          <span>Chat</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSection('inspector')}
+          className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+            activeSection === 'inspector'
+              ? 'bg-gradient-to-r from-vision-crimson to-rose-700 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Eye className="w-3 h-3" />
+          <span>X-Ray</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSection('telemetry')}
+          className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+            activeSection === 'telemetry'
+              ? 'bg-gradient-to-r from-vision-crimson to-rose-700 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Activity className="w-3 h-3" />
+          <span>Telemetry</span>
+          {state.tokenMetrics.estimatedCostDiscountPercent > 0 && (
+            <span className="text-[9px] font-mono text-vision-gold">
+              {state.tokenMetrics.estimatedCostDiscountPercent}%
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSection('skills')}
+          className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+            activeSection === 'skills'
+              ? 'bg-gradient-to-r from-vision-crimson to-rose-700 text-white shadow-sm'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Shield className="w-3 h-3" />
+          <span>System</span>
+        </button>
+      </nav>
+
       {activeTab.isInternal && !pinnedTabId && (
-        <div className="flex items-start gap-1.5 bg-amber-950/40 border border-amber-600/30 rounded-lg px-2.5 py-2 mb-2.5 text-[11px] text-amber-300">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-1.5 bg-amber-950/40 border border-vision-gold/40 rounded-lg px-2.5 py-1.5 mb-2 text-[11px] text-amber-200">
+          <AlertTriangle className="w-3.5 h-3.5 text-vision-gold shrink-0 mt-0.5" />
           <span>
-            Target is a Chrome internal page. Switch your browser tab or pick a target tab from the dropdown above.
+            Switch to a regular website tab (e.g. Coursera, NetAcad, YouTube) or select a tab above.
           </span>
         </div>
       )}
 
-      {/* Token Telemetry HUD */}
-      <div className="mb-3">
-        <TokenTelemetryHUD
-          metrics={state.tokenMetrics}
-          activeTier={state.activeTier}
-          activeProvider={state.activeProvider}
-          activeModel={state.activeModel}
+      {/* SECTION 1: Main Chat + Model Selector + Thinking Steps */}
+      {activeSection === 'chat' && (
+        <TaskStream
+          state={state}
+          prompt={prompt}
+          onPromptChange={setPrompt}
+          onStart={(override) => handleStartTask(override)}
+          onPause={handlePause}
+          onResume={handleResume}
+          onStop={handleStop}
+          onReset={handleReset}
+          selectedProvider={selectedProvider}
+          selectedModel={selectedModel}
+          onSelectModel={handleQuickSelectModel}
+          onOpenVault={() => setVaultOpen(true)}
         />
-      </div>
+      )}
 
-      {/* Interactive Task Stream & Controls */}
-      <TaskStream
-        state={state}
-        prompt={prompt}
-        onPromptChange={setPrompt}
-        onStart={() => handleStartTask()}
-        onPause={handlePause}
-        onResume={handleResume}
-        onStop={handleStop}
-        onReset={handleReset}
-      />
+      {/* SECTION 2: Live DOM X-Ray Inspector & 1-Click Coursera/LMS Macros */}
+      {activeSection === 'inspector' && (
+        <PageInspectorPanel
+          tabId={currentTabId}
+          onLaunchMacroGoal={(macroGoal) => {
+            setPrompt(macroGoal);
+            handleStartTask(macroGoal);
+          }}
+        />
+      )}
+
+      {/* SECTION 3: Dedicated Token Telemetry & Mind Stone Diagnostics */}
+      {activeSection === 'telemetry' && (
+        <div className="flex-1 overflow-y-auto">
+          <TokenTelemetryHUD
+            metrics={state.tokenMetrics}
+            activeTier={state.activeTier}
+            activeProvider={state.activeProvider || selectedProvider}
+            activeModel={state.activeModel || selectedModel}
+            stepCount={state.stepNumber}
+            traceCount={state.completedTraces.length}
+          />
+        </div>
+      )}
+
+      {/* SECTION 4: System Hub (Quick access to 0-Token Skills & API Keys) */}
+      {activeSection === 'skills' && (
+        <div className="flex-1 flex flex-col gap-3 overflow-y-auto">
+          <div className="bg-vision-panel border border-vision-border rounded-xl p-3.5 flex flex-col gap-2.5">
+            <div className="text-xs font-bold text-vision-gold uppercase tracking-wider flex items-center gap-1.5">
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Multi-LLM API Vault & Failover</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Configure API keys for Gemini, Groq, OpenRouter, Anthropic Claude, and Local Ollama with automatic 429/404 model failover.
+            </p>
+            <button
+              type="button"
+              onClick={() => setVaultOpen(true)}
+              className="w-full py-2 rounded-lg bg-gradient-to-r from-vision-crimson to-rose-700 hover:from-rose-600 hover:to-rose-500 text-white font-bold text-xs shadow-md transition-all"
+            >
+              Open Full API Key & Model Vault
+            </button>
+          </div>
+
+          <div className="bg-vision-panel border border-vision-border rounded-xl p-3.5 flex flex-col gap-2.5">
+            <div className="text-xs font-bold text-vision-tealBright uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Zero-Token Learned Site Reflexes</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Successful multi-step runs are automatically compiled into deterministic CSS/ARIA workflows in IndexedDB for 0-token replay.
+            </p>
+            <button
+              type="button"
+              onClick={() => setSkillsOpen(true)}
+              className="w-full py-2 rounded-lg bg-vision-card hover:bg-vision-border text-vision-tealBright border border-vision-teal/40 font-bold text-xs transition-all"
+            >
+              Manage Saved 0-Token Skills
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Human-in-the-Loop Intercept Modal */}
       {state.requiresApproval && (
@@ -3316,7 +4725,7 @@ export default function App(): React.JSX.Element {
         />
       )}
 
-      {/* Drawers / Modals */}
+      {/* Modals */}
       <ApiKeyVault isOpen={vaultOpen} onClose={() => setVaultOpen(false)} />
       <SkillsDrawer
         isOpen={skillsOpen}

@@ -16,6 +16,18 @@ export interface TokenMetrics {
   estimatedCostDiscountPercent: number;
 }
 
+export interface ThinkingStep {
+  stepNumber: number;
+  thought: string;
+  actions: MacroAction[];
+  executedTraces?: ActionTrace[];
+  status: 'thinking' | 'acting' | 'done' | 'error';
+  timestamp: number;
+  provider?: LLMProviderType;
+  model?: string;
+  pageUrl?: string;
+}
+
 export interface AgentSessionState {
   status: AgentStatus;
   goal: string;
@@ -31,6 +43,7 @@ export interface AgentSessionState {
   };
   tokenMetrics: TokenMetrics;
   completedTraces: ActionTrace[];
+  thinkingHistory?: ThinkingStep[];
   activeProvider?: LLMProviderType;
   activeTier?: RouterTier;
   activeModel?: string;
@@ -48,6 +61,14 @@ export interface TabSessionSummary {
   isInternal: boolean;
 }
 
+export interface PageInspectionSummary {
+  url: string;
+  title: string;
+  interactiveCount: number;
+  totalElements: number;
+  distilledPreview: string;
+}
+
 export type ExtensionMessage =
   | { type: 'START_TASK'; goal: string; tabId?: number }
   | { type: 'PAUSE_TASK'; tabId?: number }
@@ -56,6 +77,12 @@ export type ExtensionMessage =
   | { type: 'GET_AGENT_STATE'; tabId?: number }
   | { type: 'LIST_TAB_SESSIONS' }
   | { type: 'APPROVE_ACTION'; approved: boolean; tabId?: number }
+  | {
+      type: 'SET_ACTIVE_MODEL';
+      provider: 'openrouter' | 'groq' | 'gemini' | 'anthropic' | 'ollama';
+      model: string;
+    }
+  | { type: 'INSPECT_TAB_DOM'; tabId?: number }
   | { type: 'DISTILL_VIEWPORT' }
   | { type: 'EXECUTE_MACRO'; actions: MacroAction[] }
   | { type: 'GET_DELTA' }

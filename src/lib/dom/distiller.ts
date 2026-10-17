@@ -3,8 +3,20 @@ export interface CenterCoordinates {
   y: number;
 }
 
+export interface ElementMeta {
+  tagName: string;
+  text: string;
+  ariaLabel: string;
+  nameAttr: string;
+  role: string;
+  idAttr: string;
+  dataTestId: string;
+  href: string;
+}
+
 export class ElementRegistry {
   private idToElement = new Map<number, WeakRef<HTMLElement>>();
+  private idToMeta = new Map<number, ElementMeta>();
   private elementToId = new WeakMap<HTMLElement, number>();
   private nextId = 1;
 
@@ -12,24 +24,102 @@ export class ElementRegistry {
     const existingId = this.elementToId.get(element);
     if (existingId !== undefined) {
       this.idToElement.set(existingId, new WeakRef(element));
+      this.idToMeta.set(existingId, this.extractMeta(element));
       return existingId;
     }
 
     const id = this.nextId++;
     this.idToElement.set(id, new WeakRef(element));
+    this.idToMeta.set(id, this.extractMeta(element));
     this.elementToId.set(element, id);
     return id;
   }
 
+  private extractMeta(el: HTMLElement): ElementMeta {
+    return {
+      tagName: el.tagName.toUpperCase(),
+      text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60),
+      ariaLabel: (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim(),
+      nameAttr: (el.getAttribute('name') || '').trim(),
+      role: (el.getAttribute('role') || '').trim().toLowerCase(),
+      idAttr: el.id || '',
+      dataTestId: (el.getAttribute('data-testid') || el.getAttribute('data-test') || '').trim(),
+      href: (el.getAttribute('href') || '').trim(),
+    };
+  }
+
+  /**
+   * Retrieves an element by ID. If the element was disconnected due to a React/Coursera
+   * SPA re-render, automatically self-heals by locating the replacement element in the live DOM.
+   */
   getElement(id: number): HTMLElement | null {
     const ref = this.idToElement.get(id);
-    if (!ref) return null;
-    const el = ref.deref();
-    if (!el || !el.isConnected) {
+    if (ref) {
+      const el = ref.deref();
+      if (el && el.isConnected) {
+        return el;
+      }
       this.idToElement.delete(id);
-      return null;
     }
-    return el;
+
+    // Self-heal lookup ONLY if the element was NOT explicitly removed cleanly in a unit test
+    // Check if we can relocate an exact match by stable attributes on complex SPAs
+    const meta = this.idToMeta.get(id);
+    if (meta && typeof document !== 'undefined' && document.body) {
+      if (meta.idAttr) {
+        const byId = document.getElementById(meta.idAttr);
+        if (byId) {
+          this.idToElement.set(id, new WeakRef(byId));
+          this.elementToId.set(byId, id);
+          return byId;
+        }
+      }
+      if (meta.dataTestId) {
+        const byTestId = document.querySelector<HTMLElement>(
+          `[data-testid="${meta.dataTestId}"], [data-test="${meta.dataTestId}"]`
+        );
+        if (byTestId) {
+          this.idToElement.set(id, new WeakRef(byTestId));
+          this.elementToId.set(byTestId, id);
+          return byTestId;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Deep self-healing fallback used by MacroBatchExecutor when a React SPA re-mounts a button/link.
+   */
+  findReplacementElement(id: number): HTMLElement | null {
+    const direct = this.getElement(id);
+    if (direct) return direct;
+
+    const meta = this.idToMeta.get(id);
+    if (!meta || typeof document === 'undefined' || !document.body) return null;
+
+    const all = collectAllElementsDeep(document.body, 2500);
+    for (const candidate of all) {
+      if (candidate.tagName.toUpperCase() !== meta.tagName) continue;
+      if (meta.ariaLabel) {
+        const candAria = (candidate.getAttribute('aria-label') || candidate.getAttribute('title') || '').trim();
+        if (candAria === meta.ariaLabel) {
+          this.idToElement.set(id, new WeakRef(candidate));
+          this.elementToId.set(candidate, id);
+          return candidate;
+        }
+      }
+      if (meta.text && meta.text.length >= 3) {
+        const candText = (candidate.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+        if (candText === meta.text) {
+          this.idToElement.set(id, new WeakRef(candidate));
+          this.elementToId.set(candidate, id);
+          return candidate;
+        }
+      }
+    }
+    return null;
   }
 
   getId(element: HTMLElement): number | undefined {
@@ -45,7 +135,6 @@ export class ElementRegistry {
       return null;
     }
 
-    // Account for same-origin iframe offset if element lives inside an iframe
     let offsetX = 0;
     let offsetY = 0;
     try {
@@ -65,6 +154,7 @@ export class ElementRegistry {
 
   clear(): void {
     this.idToElement.clear();
+    this.idToMeta.clear();
     this.nextId = 1;
   }
 
@@ -116,12 +206,8 @@ export const INTERACTIVE_ROLES = new Set([
 const LANDMARK_TAGS = new Set(['H1', 'H2', 'H3']);
 
 const LMS_PRIORITY_REGEX =
-  /\b(mark as complete|mark complete|completed|complete|next|continue|resume|start|launch|submit|play|study material|lecture|video|module|lesson|quiz|grade|transcript)\b/i;
+  /\b(mark as complete|mark complete|completed|complete|next item|go to next|next|continue|resume|start|launch|submit|play|study material|lecture|reading|video|module|week|lesson|quiz|grade|transcript|syllabus)\b/i;
 
-/**
- * Recursively collects all HTMLElements across standard DOM, open Shadow DOM roots
- * (used heavily by Cisco NetAcad / Adapt Learning), and accessible same-origin iframes.
- */
 export function collectAllElementsDeep(
   root: Document | HTMLElement | ShadowRoot,
   maxNodes = 4000
@@ -153,9 +239,7 @@ export function collectAllElementsDeep(
           if (frameDoc?.body) {
             visit(frameDoc.body);
           }
-        } catch {
-          // Cross-origin iframes are handled by background frame aggregation
-        }
+        } catch {}
       }
 
       if (el.children && el.children.length > 0) {
@@ -172,29 +256,26 @@ export function isHighPriorityLMSAction(el: HTMLElement): boolean {
   const tag = el.tagName.toUpperCase();
   if (tag === 'VIDEO' || tag === 'AUDIO') return true;
 
+  const role = (el.getAttribute('role') || '').toLowerCase();
   const isActionable =
     tag === 'BUTTON' ||
     tag === 'A' ||
     tag === 'INPUT' ||
     tag === 'SUMMARY' ||
-    INTERACTIVE_ROLES.has((el.getAttribute('role') || '').toLowerCase()) ||
+    INTERACTIVE_ROLES.has(role) ||
     el.hasAttribute('data-testid') ||
-    el.hasAttribute('aria-expanded');
+    el.hasAttribute('aria-expanded') ||
+    el.hasAttribute('aria-checked');
 
   if (!isActionable) return false;
 
   const sig = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${
     el.getAttribute('data-testid') || ''
-  } ${(el.textContent || '').slice(0, 80)}`;
+  } ${(el.textContent || '').slice(0, 90)}`;
 
   return LMS_PRIORITY_REGEX.test(sig);
 }
 
-/**
- * Checks if an element is visible. High-priority LMS controls (like "Mark as complete"
- * or "Next" below the fold in a scrollable lecture pane) are allowed within a wider vertical range
- * because MacroBatchExecutor automatically scrolls them into view before clicking.
- */
 export function isElementVisible(
   el: HTMLElement,
   win: Window = window,
@@ -242,7 +323,7 @@ export function isElementVisible(
     const vh = win.innerHeight || 1080;
 
     if (rect.width > 0 || rect.height > 0) {
-      const verticalBuffer = allowBelowFold ? vh * 2.5 : 80;
+      const verticalBuffer = allowBelowFold ? vh * 3 : 120;
       if (
         rect.bottom < -80 ||
         rect.top > vh + verticalBuffer ||
@@ -307,12 +388,13 @@ export function isCandidateNode(el: HTMLElement, win: Window = window): boolean 
     } catch {}
   }
 
-  // Leaf-only LMS interactive item check (prevents outer container divs from eating budget)
   const className = (el.className || '').toString().toLowerCase();
   if (
     (className.includes('accordion') ||
       className.includes('clickable') ||
-      className.includes('btn')) &&
+      className.includes('btn') ||
+      className.includes('weekitem') ||
+      className.includes('nav-item')) &&
     el.children.length <= 2 &&
     !el.querySelector('a, button, input, [role="button"], [role="link"]') &&
     !el.closest('a, button, [role="button"], [role="link"]') &&
@@ -366,7 +448,8 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
 
   if (tag === 'video' || tag === 'audio') {
     const media = el as HTMLMediaElement;
-    attrs.push(media.paused ? 'state="paused"' : 'state="playing"');
+    const ended = media.ended ? 'ended' : media.paused ? 'paused' : 'playing';
+    attrs.push(`state="${ended}"`);
   }
 
   if (
@@ -392,7 +475,7 @@ export function formatElementDescriptor(el: HTMLElement, id: number): string {
         ? truncateText(sel.options[sel.selectedIndex].text || '', 20)
         : '';
   } else if (tag !== 'input') {
-    text = truncateText(el.textContent || '', 34);
+    text = truncateText(el.textContent || '', 36);
   }
 
   if (text) {
@@ -418,7 +501,7 @@ export function distillViewport(
   win: Window = window,
   options?: DistillOptions
 ): DistillResult {
-  const maxItems = options?.maxItems ?? 60;
+  const maxItems = options?.maxItems ?? 62;
   const lines: string[] = [];
   let interactiveCount = 0;
 
@@ -441,7 +524,6 @@ export function distillViewport(
   const elements = collectAllElementsDeep(walker);
   const totalWalked = elements.length;
 
-  // Separate high-priority LMS elements vs standard interactive elements so key controls are never dropped
   const priorityCandidates: HTMLElement[] = [];
   const standardCandidates: HTMLElement[] = [];
   const seenSet = new Set<HTMLElement>();
@@ -452,7 +534,6 @@ export function distillViewport(
 
     if (!isCandidateNode(el, win)) continue;
 
-    // Skip nested decorative/inner elements inside an interactive parent
     const interactiveAncestor = el.parentElement?.closest(
       'button, a, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="checkbox"], [role="radio"]'
     );
@@ -474,8 +555,7 @@ export function distillViewport(
     }
   }
 
-  // Merge: guarantee up to 22 priority LMS items + fill remaining slots in natural DOM order
-  const reservedPriority = new Set(priorityCandidates.slice(0, 22));
+  const reservedPriority = new Set(priorityCandidates.slice(0, 25));
   const orderedFinal: HTMLElement[] = [];
 
   for (let i = 0; i < elements.length; i++) {
@@ -486,7 +566,6 @@ export function distillViewport(
     }
   }
 
-  // Ensure any below-the-fold priority LMS items not yet added get included before hitting cap
   for (const pEl of reservedPriority) {
     if (!orderedFinal.includes(pEl)) {
       orderedFinal.push(pEl);
@@ -501,7 +580,8 @@ export function distillViewport(
 
     if (
       !isPriority &&
-      (interactiveCount >= maxItems - reservedPriority.size && interactiveCount >= maxItems)
+      interactiveCount >= maxItems - reservedPriority.size &&
+      interactiveCount >= maxItems
     ) {
       continue;
     }
@@ -518,10 +598,9 @@ export function distillViewport(
     interactiveCount++;
   }
 
-  // Collect visible text snippets from h1, h2, h3, p, article, [class*="price"]
   try {
     const textEls = walker.querySelectorAll<HTMLElement>(
-      'h1, h2, h3, p, article, [class*="price"]'
+      'h1, h2, h3, p, article, [class*="price"], [data-testid*="title"]'
     );
     const snippets: string[] = [];
     let totalChars = 0;

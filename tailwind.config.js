@@ -8,20 +8,36 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Marvel's Vision (Synthezoid Crimson + Android Teal + Mind Stone Solar Gold)
+        vision: {
+          bg: '#09060e',
+          panel: '#120b1c',
+          card: '#1a1027',
+          border: '#2e1d42',
+          crimson: '#e11d48',
+          crimsonLight: '#fb7185',
+          gold: '#fbbf24',
+          goldBright: '#fde047',
+          teal: '#14b8a6',
+          tealBright: '#2dd4bf',
+          cape: '#fef08a'
+        },
+        // Legacy aliases preserved for compatibility
         orbit: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          500: '#22c55e',
-          600: '#16a34a',
-          900: '#14532d',
-          dark: '#0d1117',
-          panel: '#161b22',
-          border: '#30363d',
-          accent: '#58a6ff',
-          neon: '#39d353'
+          50: '#f0fdfa',
+          100: '#ccfbf1',
+          500: '#14b8a6',
+          600: '#0d9488',
+          900: '#134e4a',
+          dark: '#09060e',
+          panel: '#120b1c',
+          border: '#2e1d42',
+          accent: '#fbbf24',
+          neon: '#2dd4bf'
         }
       }
     },
   },
   plugins: [],
 }
+

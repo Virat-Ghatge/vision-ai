@@ -88,7 +88,7 @@
 | 25 | M7.3 | PASS (0 errors) | PASS (58 tests) | PASS (418.09 kB bundle) | N/A (Cross-Frame & Heuristics) | NetAcad SCORM child frame discovery & execution, strict completion heuristic with future intent guard |
 | 26 | M8.1 | PASS (0 errors) | PASS (60 tests) | PASS (420.98 kB bundle) | N/A (Multi-Tab Manager) | TabAgentManager with per-tab isolated state machines, storage keys, LIST_TAB_SESSIONS, open_tab, switch_tab |
 | 27 | M8.2 | PASS (0 errors) | PASS (60 tests) | PASS (427.68 kB bundle) | N/A (Multi-Tab UI) | Per-tab workspace binding, draft prompt caching per tab, TabSelectorBar with live background badges |
-| 28 | M9.1 | PASS (0 errors) | PASS (62 tests) | PASS (418.39 kB bundle) | PASS (Verified) | Marvel Vision UI, Thinking Steps Stream, Self-Healing DOM Registry, and Continuous Step Distillation |
+| 28 | M9.1 | PASS (0 errors) | PASS (62 tests) | PASS (451.65 kB bundle) | PASS (Verified) | Marvel Vision UI, Thinking Steps Stream, Self-Healing DOM Registry, and Continuous Step Distillation |
 
 ---
 

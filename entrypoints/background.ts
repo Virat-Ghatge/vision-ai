@@ -6,7 +6,7 @@ import { globalSkillStore, compileTraceToSkill } from '../src/lib/skills/skillSt
 import { classifyActionSafety } from '../src/lib/safety/interceptor';
 
 export default defineBackground(() => {
-  console.log('[Vision AI] Multi-Tab Service Worker background loop initialized.');
+  console.log('[Vision AI] Synthezoid Multi-Tab Service Worker initialized.');
 
   if (typeof chrome !== 'undefined') {
     if (chrome.sidePanel?.setOptions) {
@@ -78,7 +78,6 @@ export default defineBackground(() => {
     }
   });
 
-  // Per-Tab Isolated Agent State Machine Map
   const tabAgents = new Map<number, AgentStateMachine>();
 
   const getOrCreateTabAgent = (tabId: number): AgentStateMachine => {
@@ -168,7 +167,6 @@ export default defineBackground(() => {
         resolveActiveTabId(message.tabId).then(async (tabId) => {
           await syncStorageToRouter();
           const agent = getOrCreateTabAgent(tabId);
-          // Do not block other tabs: start task asynchronously on this tab's state machine
           agent.startTask(message.goal, tabId).catch((err) => {
             console.warn(`[Vision AI] Tab ${tabId} startTask error:`, err);
           });
@@ -212,6 +210,56 @@ export default defineBackground(() => {
             await agent.restoreSession();
           }
           sendResponse(agent.getState());
+        });
+        return true;
+      }
+
+      case 'SET_ACTIVE_MODEL': {
+        (async () => {
+          await syncStorageToRouter();
+          const currentCfg = router.getConfig();
+          const updates: Record<string, any> = {};
+          if (message.provider === 'openrouter' || message.provider === 'groq' || message.provider === 'gemini') {
+            updates.preferredTier1Provider = message.provider;
+          }
+          if (message.provider === 'openrouter') updates.openRouterModel = message.model;
+          if (message.provider === 'groq') updates.groqModel = message.model;
+          if (message.provider === 'gemini') updates.geminiModel = message.model;
+          if (message.provider === 'anthropic') {
+            updates.preferredTier2Provider = 'anthropic';
+            updates.anthropicModel = message.model;
+          }
+          if (message.provider === 'ollama') updates.tier0Model = message.model;
+
+          router.updateConfig(updates);
+          if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            const stored = await chrome.storage.local.get('modelRoutingConfig');
+            await chrome.storage.local.set({
+              modelRoutingConfig: { ...(stored.modelRoutingConfig || currentCfg), ...updates },
+            });
+          }
+          sendResponse({ success: true, config: router.getConfig() });
+        })();
+        return true;
+      }
+
+      case 'INSPECT_TAB_DOM': {
+        resolveActiveTabId(message.tabId).then(async (tabId) => {
+          if (tabId <= 0 || typeof chrome === 'undefined' || !chrome.tabs?.sendMessage) {
+            sendResponse({ error: 'No active tab to inspect' });
+            return;
+          }
+          try {
+            const res = await chrome.tabs.sendMessage(tabId, { type: 'DISTILL_VIEWPORT' });
+            sendResponse({
+              url: res?.url || '',
+              title: res?.title || '',
+              interactiveCount: res?.count || 0,
+              distilledPreview: res?.text || '(Empty DOM)',
+            });
+          } catch (err) {
+            sendResponse({ error: String(err) });
+          }
         });
         return true;
       }

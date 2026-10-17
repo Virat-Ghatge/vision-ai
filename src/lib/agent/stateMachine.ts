@@ -1,4 +1,4 @@
-import { AgentSessionState } from './types';
+import { AgentSessionState, ThinkingStep } from './types';
 import { LLMRouter } from '../llm/router';
 import { ByteStableContextManager } from '../llm/contextManager';
 import { MacroAction } from '../llm/types';
@@ -51,6 +51,7 @@ export class AgentStateMachine {
         estimatedCostDiscountPercent: 0,
       },
       completedTraces: [],
+      thinkingHistory: [],
     };
   }
 
@@ -65,7 +66,10 @@ export class AgentStateMachine {
       const res = await chrome.storage.session.get(this.storageKey);
       const saved = res[this.storageKey] as AgentSessionState | undefined;
       if (saved) {
-        this.state = saved;
+        this.state = {
+          ...saved,
+          thinkingHistory: Array.isArray(saved.thinkingHistory) ? saved.thinkingHistory : [],
+        };
         this.hooks.onStateChange?.(this.state);
         return true;
       }
@@ -84,6 +88,17 @@ export class AgentStateMachine {
       }
     }
     this.hooks.onStateChange?.(this.state);
+  }
+
+  private upsertThinkingStep(step: ThinkingStep): void {
+    const history = this.state.thinkingHistory ? [...this.state.thinkingHistory] : [];
+    const idx = history.findIndex((s) => s.stepNumber === step.stepNumber);
+    if (idx >= 0) {
+      history[idx] = { ...history[idx], ...step };
+    } else {
+      history.push(step);
+    }
+    this.state.thinkingHistory = history;
   }
 
   async startTask(goal: string, tabId: number): Promise<void> {
@@ -115,13 +130,14 @@ export class AgentStateMachine {
       return;
     }
 
-    if (!this.hooks.sessionStorageKey && targetTabId > 0) {
+    if (!this.hooks.sessionStorageKey && targetTabId > 0 && this.storageKey === DEFAULT_STORAGE_SESSION_KEY) {
       this.storageKey = `orbit_agent_session_tab_${targetTabId}`;
     }
 
     this.lastKnownUrl = '';
     this.actionHistorySignatures = [];
     this.emptyActionCount = 0;
+    this.frameElementMap.clear();
 
     this.state = {
       ...this.getInitialState(),
@@ -129,6 +145,7 @@ export class AgentStateMachine {
       goal,
       tabId: targetTabId,
       stepNumber: 1,
+      thinkingHistory: [],
     };
     await this.persistSession();
 
@@ -147,9 +164,21 @@ export class AgentStateMachine {
       return this.state;
     }
 
+    const currentStepNum = this.state.stepNumber;
+
     try {
+      // Emit live "thinking" step placeholder so Chat UI shows instant Mind Stone activity
+      this.upsertThinkingStep({
+        stepNumber: currentStepNum,
+        thought: `Scanning page DOM and synthesizing Step ${currentStepNum} plan...`,
+        actions: [],
+        status: 'thinking',
+        timestamp: Date.now(),
+      });
+      await this.persistSession();
+
       let observationText = '';
-      if (this.state.stepNumber === 1) {
+      if (currentStepNum === 1) {
         observationText = await this.queryTabDistillation(this.state.tabId);
         this.lastKnownUrl = await this.getTabUrl(this.state.tabId);
 
@@ -160,6 +189,15 @@ export class AgentStateMachine {
             this.state.currentThought = 'Executing matched 0-token deterministic domain skill from cache.';
             const execResult = await this.sendActionsToTab(this.state.tabId, skillMatch.actions);
             this.state.completedTraces.push(...execResult.executedTraces);
+            this.upsertThinkingStep({
+              stepNumber: 1,
+              thought: this.state.currentThought,
+              actions: skillMatch.actions,
+              executedTraces: execResult.executedTraces,
+              status: 'done',
+              timestamp: Date.now(),
+              pageUrl: tabUrl,
+            });
             this.state.status = 'completed';
             await this.persistSession();
             return this.state;
@@ -173,32 +211,31 @@ export class AgentStateMachine {
         const didNavigate = Boolean(currentUrl && previousUrl && currentUrl !== previousUrl);
         this.lastKnownUrl = currentUrl;
 
+        // CRITICAL FIX: Always run queryTabDistillation so newly scrolled or expanded Coursera/LMS elements
+        // get registered in globalElementRegistry with fresh [id] numbers!
+        const deltaResult = await this.queryTabDelta(this.state.tabId);
+        const freshDom = await this.queryTabDistillation(this.state.tabId);
+        const hasNoDelta = deltaResult.includes('NO CHANGES');
+
         let stepObs = '';
         if (didNavigate) {
-          const freshDom = await this.queryTabDistillation(this.state.tabId);
-          stepObs = `ACTION RESULT: Previous action executed. Page navigated to: ${currentUrl}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
+          stepObs = `ACTION RESULT: Page navigated to: ${currentUrl}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
+        } else if (hasNoDelta) {
+          stepObs = `CURRENT PAGE: ${currentUrl || 'Current Tab'}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
         } else {
-          const deltaResult = await this.queryTabDelta(this.state.tabId);
-          const hasNoDelta = deltaResult.includes('NO CHANGES');
-
-          if (hasNoDelta) {
-            const freshDom = await this.queryTabDistillation(this.state.tabId);
-            stepObs = `CURRENT PAGE: ${currentUrl || 'Current Tab'}\nCURRENT VIEWPORT DOM:\n${freshDom}`;
-          } else {
-            stepObs = `CURRENT PAGE: ${currentUrl || 'Current Tab'}\n${deltaResult}`;
-          }
+          stepObs = `CURRENT PAGE: ${currentUrl || 'Current Tab'}\n${deltaResult}\nUPDATED VIEWPORT DOM:\n${freshDom}`;
         }
 
         if (this.actionHistorySignatures.length >= 2) {
           const lastSig = this.actionHistorySignatures[this.actionHistorySignatures.length - 1];
           const prevSig = this.actionHistorySignatures[this.actionHistorySignatures.length - 2];
           if (lastSig === prevSig && !didNavigate) {
-            stepObs += `\n[SYSTEM NOTE: Previous action "${lastSig}" produced no page progression. Avoid repeating it. Try scrolling down ({ "type": "scroll", "value": "down" }), completing media ({ "type": "complete_media" }), or clicking another module/button.]`;
+            stepObs += `\n[SYSTEM NOTE: Previous action "${lastSig}" produced no page progression. Do NOT repeat it. Try scrolling down ({ "type": "scroll", "value": "down" }), completing media ({ "type": "complete_media" }), or clicking the next module/item.]`;
           }
         }
 
         observationText = stepObs;
-        this.contextManager.appendStepObservation(this.state.stepNumber, observationText);
+        this.contextManager.appendStepObservation(currentStepNum, observationText);
       }
 
       this.updateTelemetry();
@@ -218,7 +255,7 @@ export class AgentStateMachine {
         (isInfo && this.hasCompletionIndication(plan.thought) && !isRefusal) ||
         (plan.complete === true && plan.thought.length > 20 && !isRefusal);
 
-      if (this.state.stepNumber === 1 && plan.actions.length === 0 && !isFinishedWithAnswer) {
+      if (currentStepNum === 1 && plan.actions.length === 0 && !isFinishedWithAnswer) {
         const actionNudge = `[SYSTEM ACTION MANDATE]: You returned 0 actions. As an autonomous browser agent, you must interact with the page. Do not output disclaimers or conversational lectures. Take the immediate next concrete step toward the goal (e.g. click the first module, lesson, start link, or accordion item visible in the viewport DOM). Output valid JSON with at least 1 action.`;
         this.contextManager.appendStepObservation(1, actionNudge);
 
@@ -247,6 +284,18 @@ export class AgentStateMachine {
       this.state.currentThought = plan.thought;
       this.state.pendingActions = plan.actions;
 
+      this.upsertThinkingStep({
+        stepNumber: currentStepNum,
+        thought: plan.thought,
+        actions: plan.actions,
+        status: plan.actions.length > 0 ? 'acting' : 'done',
+        timestamp: Date.now(),
+        provider,
+        model: modelUsed,
+        pageUrl: this.lastKnownUrl,
+      });
+      await this.persistSession();
+
       if (this.hooks.isDestructiveAction) {
         for (const action of plan.actions) {
           const check = this.hooks.isDestructiveAction(action);
@@ -266,8 +315,16 @@ export class AgentStateMachine {
       await this.executePendingActions(plan.complete);
       return this.state;
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       this.state.status = 'error';
-      this.state.error = err instanceof Error ? err.message : String(err);
+      this.state.error = errMsg;
+      this.upsertThinkingStep({
+        stepNumber: currentStepNum,
+        thought: this.state.currentThought || `Error on Step ${currentStepNum}: ${errMsg}`,
+        actions: [],
+        status: 'error',
+        timestamp: Date.now(),
+      });
       this.router.recordFailure();
       await this.persistSession();
       return this.state;
@@ -295,6 +352,7 @@ export class AgentStateMachine {
   }
 
   private async executePendingActions(isPlanComplete: boolean): Promise<void> {
+    const currentStepNum = this.state.stepNumber;
     const actions = this.state.pendingActions;
     this.state.pendingActions = [];
 
@@ -309,9 +367,11 @@ export class AgentStateMachine {
       this.emptyActionCount = 0;
     }
 
+    let stepTraces: ActionTrace[] = [];
     if (actions.length > 0) {
       const execResult = await this.sendActionsToTab(this.state.tabId, actions);
       if (execResult && Array.isArray(execResult.executedTraces)) {
+        stepTraces = execResult.executedTraces;
         this.state.completedTraces.push(...execResult.executedTraces);
       }
 
@@ -322,9 +382,32 @@ export class AgentStateMachine {
       }
     }
 
+    this.upsertThinkingStep({
+      stepNumber: currentStepNum,
+      thought: this.state.currentThought,
+      actions,
+      executedTraces: stepTraces,
+      status: 'done',
+      timestamp: Date.now(),
+      provider: this.state.activeProvider,
+      model: this.state.activeModel,
+      pageUrl: this.lastKnownUrl,
+    });
+
     let shouldComplete = isPlanComplete;
 
     if (this.hasRefusalIndication(this.state.currentThought)) {
+      shouldComplete = false;
+    }
+
+    // Do not allow premature completion on multi-step goals if actions were just executed and thought indicates more steps remain
+    if (
+      shouldComplete &&
+      actions.length > 0 &&
+      /\b(now i will|next i will|opening|clicking module|let's open|scrolling to find)\b/i.test(
+        this.state.currentThought
+      )
+    ) {
       shouldComplete = false;
     }
 
@@ -431,8 +514,9 @@ export class AgentStateMachine {
 
   private hasCompletionIndication(thought: string): boolean {
     const lower = (thought || '').toLowerCase();
-    // Never treat future-intent thoughts (e.g. "I need to click Mark as complete") as finished
-    if (/\b(will|going to|need to|next|try to|let's|clicking|opening|scrolling)\b/i.test(lower)) {
+    if (
+      /\b(will|going to|need to|next|try to|let's|clicking|opening|scrolling|not done)\b/i.test(lower)
+    ) {
       return false;
     }
     const completionPhrases = [
@@ -505,7 +589,9 @@ export class AgentStateMachine {
       await new Promise((r) => setTimeout(r, 80));
     }
 
-    await new Promise((r) => setTimeout(r, 60));
+    // Allow SPA frameworks (Coursera React Router / NetAcad) time to render new lecture DOM
+    const isTestEnv = typeof process !== 'undefined' && process.env.NODE_ENV === 'test';
+    await new Promise((r) => setTimeout(r, isTestEnv ? 40 : 320));
 
     try {
       const finalTab = await chrome.tabs.get(tabId);
@@ -527,10 +613,6 @@ export class AgentStateMachine {
     return '';
   }
 
-  /**
-   * Collects interactive elements from child iframes (e.g., Cisco NetAcad SCORM / course frames)
-   * using composite IDs (frameId * 10000 + localId).
-   */
   private async appendSubframeDistillation(tabId: number, mainText: string): Promise<string> {
     if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript || tabId <= 0) {
       return mainText;
@@ -622,7 +704,11 @@ export class AgentStateMachine {
             if (item.desc) {
               extraLines.push(`[${globalId}] ${item.desc}`);
             } else {
-              const attrStr = item.attrStr ? (item.attrStr.startsWith(' ') ? item.attrStr : ' ' + item.attrStr) : '';
+              const attrStr = item.attrStr
+                ? item.attrStr.startsWith(' ')
+                  ? item.attrStr
+                  : ' ' + item.attrStr
+                : '';
               if (item.text) {
                 extraLines.push(`[${globalId}] <${item.tag}${attrStr}>${item.text}</${item.tag}>`);
               } else {
@@ -666,7 +752,7 @@ export class AgentStateMachine {
         lowerUrl.startsWith('view-source:')
       ) {
         throw new Error(
-          `Vision AI cannot run on Chrome internal page (${tabUrl}). Please open or switch to any website (e.g. https://www.google.com or https://wikipedia.org) and try again.`
+          `Vision AI cannot run on Chrome internal page (${tabUrl}). Please open or switch to any website (e.g. https://www.coursera.org or https://www.google.com) and try again.`
         );
       }
     }
@@ -854,7 +940,10 @@ export class AgentStateMachine {
             el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, composed: true }));
             el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, composed: true }));
             el.click();
-          } else if (actionObj.type === 'fill' && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+          } else if (
+            actionObj.type === 'fill' &&
+            (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)
+          ) {
             el.value = actionObj.value || '';
             el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
             el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
@@ -885,7 +974,12 @@ export class AgentStateMachine {
             if (settledUrl) this.lastKnownUrl = settledUrl;
             executedTraces.push({ action: act, timestamp: Date.now(), success: true });
           } catch (navErr) {
-            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(navErr) });
+            executedTraces.push({
+              action: act,
+              timestamp: Date.now(),
+              success: false,
+              error: String(navErr),
+            });
             abortedEarly = true;
             abortReason = 'action_failed';
             break;
@@ -906,7 +1000,12 @@ export class AgentStateMachine {
             if (settledUrl) this.lastKnownUrl = settledUrl;
             executedTraces.push({ action: act, timestamp: Date.now(), success: true });
           } catch (backErr) {
-            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(backErr) });
+            executedTraces.push({
+              action: act,
+              timestamp: Date.now(),
+              success: false,
+              error: String(backErr),
+            });
             abortedEarly = true;
             abortReason = 'action_failed';
             break;
@@ -930,7 +1029,12 @@ export class AgentStateMachine {
             }
             executedTraces.push({ action: act, timestamp: Date.now(), success: true });
           } catch (tabErr) {
-            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(tabErr) });
+            executedTraces.push({
+              action: act,
+              timestamp: Date.now(),
+              success: false,
+              error: String(tabErr),
+            });
           }
         } else {
           executedTraces.push({ action: act, timestamp: Date.now(), success: true });
@@ -953,20 +1057,23 @@ export class AgentStateMachine {
             }
             executedTraces.push({ action: act, timestamp: Date.now(), success: true });
           } catch (swErr) {
-            executedTraces.push({ action: act, timestamp: Date.now(), success: false, error: String(swErr) });
+            executedTraces.push({
+              action: act,
+              timestamp: Date.now(),
+              success: false,
+              error: String(swErr),
+            });
           }
         } else {
           executedTraces.push({ action: act, timestamp: Date.now(), success: true });
         }
-      } else if (act.id !== undefined && (this.frameElementMap.has(act.id) || act.id >= 1000)) {
-        // Target an embedded SCORM / LMS iframe
-        const frameTarget = this.frameElementMap.get(act.id);
-        const frameId = frameTarget
-          ? frameTarget.frameId
-          : Math.floor(act.id / (act.id >= SUBFRAME_ID_MULTIPLIER ? SUBFRAME_ID_MULTIPLIER : 1000));
-        const localId = frameTarget
-          ? frameTarget.localId
-          : act.id % (act.id >= SUBFRAME_ID_MULTIPLIER ? SUBFRAME_ID_MULTIPLIER : 1000);
+      } else if (act.id !== undefined && this.frameElementMap.has(act.id)) {
+        const mapped = this.frameElementMap.get(act.id)!;
+        const ok = await this.executeSubframeAction(tabId, mapped.frameId, mapped.localId, act);
+        executedTraces.push({ action: act, timestamp: Date.now(), success: ok });
+      } else if (act.id !== undefined && act.id >= SUBFRAME_ID_MULTIPLIER) {
+        const frameId = Math.floor(act.id / SUBFRAME_ID_MULTIPLIER);
+        const localId = act.id % SUBFRAME_ID_MULTIPLIER;
         const ok = await this.executeSubframeAction(tabId, frameId, localId, act);
         executedTraces.push({ action: act, timestamp: Date.now(), success: ok });
       } else {

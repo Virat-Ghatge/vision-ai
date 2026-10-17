@@ -78,10 +78,6 @@ export class CDPActuator {
     return this.isAttached;
   }
 
-  /**
-   * Clicks target coordinates via CDP Input.dispatchMouseEvent (event.isTrusted === true),
-   * with seamless fallback to synthetic DOM click if debugger is unattached or fails.
-   */
   async click(coords?: Coordinates | null, fallbackElement?: HTMLElement | null): Promise<ActionResult> {
     if (coords && this.preferCDP) {
       const attached = await this.attach();
@@ -112,7 +108,6 @@ export class CDPActuator {
       }
     }
 
-    // Fallback to synthetic DOM events with realistic pointer & mouse event sequence
     if (fallbackElement) {
       try {
         try {
@@ -146,8 +141,12 @@ export class CDPActuator {
         if (typeof fallbackElement.focus === 'function') fallbackElement.focus();
         fallbackElement.dispatchEvent(new PointerEventClass('pointerup', { ...baseInit, buttons: 0 }));
         fallbackElement.dispatchEvent(new MouseEvent('mouseup', { ...baseInit, buttons: 0 }));
-        fallbackElement.dispatchEvent(new MouseEvent('click', { ...baseInit, buttons: 0 }));
-        if (typeof fallbackElement.click === 'function') fallbackElement.click();
+        // Use a single native .click() so checkboxes and accordions are never double-toggled!
+        if (typeof fallbackElement.click === 'function') {
+          fallbackElement.click();
+        } else {
+          fallbackElement.dispatchEvent(new MouseEvent('click', { ...baseInit, buttons: 0 }));
+        }
 
         return { success: true, method: 'synthetic' };
       } catch (err) {
@@ -162,9 +161,6 @@ export class CDPActuator {
     return { success: false, method: 'synthetic', error: 'Neither coords nor fallbackElement provided' };
   }
 
-  /**
-   * Types text into target element via CDP key events, or synthetic fallback.
-   */
   async type(
     text: string,
     coords?: Coordinates | null,
@@ -174,7 +170,6 @@ export class CDPActuator {
       const attached = await this.attach();
       if (attached) {
         try {
-          // Focus element with click first
           await this.click(coords);
 
           for (const char of text) {
@@ -194,7 +189,6 @@ export class CDPActuator {
       }
     }
 
-    // Fallback to synthetic DOM input
     if (fallbackElement) {
       try {
         fallbackElement.focus();
@@ -222,9 +216,6 @@ export class CDPActuator {
     return { success: false, method: 'synthetic', error: 'No target for typing' };
   }
 
-  /**
-   * Dispatches special key (Enter, Tab, Escape, Backspace).
-   */
   async pressKey(key: string, fallbackElement?: HTMLElement | null): Promise<ActionResult> {
     const keyInfo = KEY_CODE_MAP[key];
 
@@ -252,7 +243,6 @@ export class CDPActuator {
       }
     }
 
-    // Fallback
     const target = fallbackElement || (typeof document !== 'undefined' ? document.activeElement : null);
     if (target) {
       target.dispatchEvent(
@@ -277,9 +267,6 @@ export class CDPActuator {
     return { success: false, method: 'synthetic', error: 'No active element for key press' };
   }
 
-  /**
-   * Scrolls viewport up or down.
-   */
   async scroll(direction: 'up' | 'down', amount = 400): Promise<ActionResult> {
     const deltaY = direction === 'down' ? amount : -amount;
 
@@ -322,3 +309,4 @@ export class CDPActuator {
     });
   }
 }
+
