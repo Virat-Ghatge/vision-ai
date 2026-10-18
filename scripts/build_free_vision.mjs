@@ -119,7 +119,7 @@ patchFile(path.join(DEST_DIR, 'panel/main.js'), [
   },
   // Bypass cloud credit provisioning in rj()
   {
-    search: 'function rj(t){let e=await Ii.getApiConfig();if(e&&e.selectedProvider!=="dassi-managed")return{success:!0};if(e&&dP(e))return{success:!0};let n=await X5e(t);return n.success&&await vae("dassi-managed","user"),n}',
+    search: 'async function rj(t){let e=await Ii.getApiConfig();if(e&&e.selectedProvider!=="dassi-managed")return{success:!0};if(e&&dP(e))return{success:!0};let n=await X5e(t);return n.success&&await vae("dassi-managed","user"),n}',
     replace: 'async function rj(t){return{success:!0};}',
     name: 'rj auto provisioning bypass'
   },
@@ -304,7 +304,31 @@ if (fs.existsSync(OUTPUT_DIR)) {
 copyDir(DEST_DIR, OUTPUT_DIR);
 console.log('[OK] Synced to', OUTPUT_DIR);
 
-console.log('\n=== Build Complete: Vision AI (Free Dassi BYOK Clone) is Ready! ===');
-console.log(`Unpacked extension ready at:`);
-console.log(`  1. ${path.resolve(DEST_DIR)}`);
-console.log(`  2. ${path.resolve(OUTPUT_DIR)}`);
+// 10. Run syntax validation on all built JS files
+console.log('\n--- Running Syntax Validation ---');
+import('node:child_process').then(({ execSync }) => {
+  const checkFiles = [
+    path.join(DEST_DIR, 'panel/main.js'),
+    path.join(DEST_DIR, 'background/index.js'),
+    path.join(DEST_DIR, 'offscreen/agent-worker.js'),
+    path.join(DEST_DIR, 'offscreen/main.js'),
+    path.join(DEST_DIR, 'options/options.js'),
+    path.join(DEST_DIR, 'content/neon-overlay.js'),
+    path.join(DEST_DIR, 'content/suggestions-widget.js')
+  ];
+
+  for (const f of checkFiles) {
+    try {
+      execSync(`node -c "${f}"`);
+      console.log(`[PASS] Syntax valid: ${f}`);
+    } catch (err) {
+      console.error(`[FAIL] Syntax error in ${f}:`, err.message);
+      process.exit(1);
+    }
+  }
+
+  console.log('\n=== Build Complete: Vision AI (Free Dassi BYOK Clone) is Ready! ===');
+  console.log(`Unpacked extension ready at:`);
+  console.log(`  1. ${path.resolve(DEST_DIR)}`);
+  console.log(`  2. ${path.resolve(OUTPUT_DIR)}`);
+});
