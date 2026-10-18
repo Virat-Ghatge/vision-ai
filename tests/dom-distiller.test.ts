@@ -282,4 +282,46 @@ describe('M2.3: DOM Distillation & Mutation Delta Benchmark Suite', () => {
     expect(elements).toContain(innerShadowHost);
     expect(elements).toContain(nestedBtn);
   });
+
+  it('self-heals React SPA re-rendered elements using role + accessible name + nthIndex position matching', () => {
+    // Simulate a list of accordion items or module buttons on Coursera / React SPA
+    const container = document.createElement('div');
+    container.id = 'module-list';
+
+    for (let i = 0; i < 3; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'module-expand-btn';
+      btn.textContent = 'Expand Module';
+      container.appendChild(btn);
+    }
+    document.body.appendChild(container);
+
+    const buttons = container.querySelectorAll<HTMLElement>('button');
+    const id0 = registry.register(buttons[0]);
+    const id1 = registry.register(buttons[1]);
+    const id2 = registry.register(buttons[2]);
+
+    // Simulate React re-rendering the whole container with new DOM nodes
+    container.innerHTML = `
+      <button class="module-expand-btn">Expand Module</button>
+      <button class="module-expand-btn">Expand Module</button>
+      <button class="module-expand-btn">Expand Module</button>
+    `;
+
+    const newButtons = container.querySelectorAll<HTMLElement>('button');
+    // Original references are now disconnected
+    expect(registry.getElement(id1)).toBeNull();
+
+    // Dassi-inspired nthIndex self-healing locates the exact corresponding sibling replacement
+    const healed1 = registry.findReplacementElement(id1);
+    expect(healed1).not.toBeNull();
+    expect(healed1).toBe(newButtons[1]);
+
+    const healed0 = registry.findReplacementElement(id0);
+    expect(healed0).toBe(newButtons[0]);
+
+    const healed2 = registry.findReplacementElement(id2);
+    expect(healed2).toBe(newButtons[2]);
+  });
 });
+

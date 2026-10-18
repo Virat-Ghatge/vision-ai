@@ -12,39 +12,59 @@ export interface ElementMeta {
   idAttr: string;
   dataTestId: string;
   href: string;
+  nthIndex?: number;
+  placeholder?: string;
+  value?: string;
 }
 
 export class ElementRegistry {
   private idToElement = new Map<number, WeakRef<HTMLElement>>();
   private idToMeta = new Map<number, ElementMeta>();
   private elementToId = new WeakMap<HTMLElement, number>();
+  private roleNameCounts = new Map<string, number>();
   private nextId = 1;
 
   register(element: HTMLElement): number {
     const existingId = this.elementToId.get(element);
     if (existingId !== undefined) {
+      const existingMeta = this.idToMeta.get(existingId);
       this.idToElement.set(existingId, new WeakRef(element));
-      this.idToMeta.set(existingId, this.extractMeta(element));
+      this.idToMeta.set(existingId, this.extractMeta(element, existingMeta?.nthIndex ?? 0));
       return existingId;
     }
 
+    const role = (element.getAttribute('role') || element.tagName).trim().toLowerCase();
+    const name = (element.getAttribute('aria-label') || element.getAttribute('title') || element.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    const key = `${role}::${name}`;
+    const nthIndex = this.roleNameCounts.get(key) ?? 0;
+    this.roleNameCounts.set(key, nthIndex + 1);
+
     const id = this.nextId++;
     this.idToElement.set(id, new WeakRef(element));
-    this.idToMeta.set(id, this.extractMeta(element));
+    this.idToMeta.set(id, this.extractMeta(element, nthIndex));
     this.elementToId.set(element, id);
     return id;
   }
 
-  private extractMeta(el: HTMLElement): ElementMeta {
+  private extractMeta(el: HTMLElement, nthIndex = 0): ElementMeta {
+    const inputVal =
+      el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+        ? el.value
+        : undefined;
+    const placeholder = el.getAttribute('placeholder') || undefined;
+
     return {
       tagName: el.tagName.toUpperCase(),
       text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60),
       ariaLabel: (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim(),
       nameAttr: (el.getAttribute('name') || '').trim(),
-      role: (el.getAttribute('role') || '').trim().toLowerCase(),
+      role: (el.getAttribute('role') || el.tagName).trim().toLowerCase(),
       idAttr: el.id || '',
       dataTestId: (el.getAttribute('data-testid') || el.getAttribute('data-test') || '').trim(),
       href: (el.getAttribute('href') || '').trim(),
+      nthIndex,
+      placeholder,
+      value: inputVal ? inputVal.slice(0, 40) : undefined,
     };
   }
 
@@ -91,6 +111,7 @@ export class ElementRegistry {
 
   /**
    * Deep self-healing fallback used by MacroBatchExecutor when a React SPA re-mounts a button/link.
+   * Utilizes Dassi Dsn algorithm (role + accessible name + nthIndex position matching).
    */
   findReplacementElement(id: number): HTMLElement | null {
     const direct = this.getElement(id);
@@ -99,26 +120,57 @@ export class ElementRegistry {
     const meta = this.idToMeta.get(id);
     if (!meta || typeof document === 'undefined' || !document.body) return null;
 
-    const all = collectAllElementsDeep(document.body, 2500);
-    for (const candidate of all) {
-      if (candidate.tagName.toUpperCase() !== meta.tagName) continue;
-      if (meta.ariaLabel) {
-        const candAria = (candidate.getAttribute('aria-label') || candidate.getAttribute('title') || '').trim();
-        if (candAria === meta.ariaLabel) {
-          this.idToElement.set(id, new WeakRef(candidate));
-          this.elementToId.set(candidate, id);
-          return candidate;
-        }
-      }
-      if (meta.text && meta.text.length >= 3) {
-        const candText = (candidate.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
-        if (candText === meta.text) {
-          this.idToElement.set(id, new WeakRef(candidate));
-          this.elementToId.set(candidate, id);
-          return candidate;
-        }
+    if (meta.idAttr) {
+      const byId = document.getElementById(meta.idAttr);
+      if (byId && byId.isConnected) {
+        this.idToElement.set(id, new WeakRef(byId));
+        this.elementToId.set(byId, id);
+        return byId;
       }
     }
+    if (meta.dataTestId) {
+      const byTestId = document.querySelector<HTMLElement>(
+        `[data-testid="${meta.dataTestId}"], [data-test="${meta.dataTestId}"]`
+      );
+      if (byTestId && byTestId.isConnected) {
+        this.idToElement.set(id, new WeakRef(byTestId));
+        this.elementToId.set(byTestId, id);
+        return byTestId;
+      }
+    }
+
+    const all = collectAllElementsDeep(document.body, 2500);
+    const roleMatches: HTMLElement[] = [];
+    const textMatches: HTMLElement[] = [];
+
+    for (const candidate of all) {
+      if (!candidate.isConnected) continue;
+      const candRole = (candidate.getAttribute('role') || candidate.tagName).trim().toLowerCase();
+      const candAria = (candidate.getAttribute('aria-label') || candidate.getAttribute('title') || '').trim();
+      const candText = (candidate.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+
+      const roleMatchesTarget = candRole === meta.role || candidate.tagName.toUpperCase() === meta.tagName;
+      const ariaMatches = Boolean(meta.ariaLabel && candAria === meta.ariaLabel);
+      const textMatchesTarget = Boolean(meta.text && meta.text.length >= 3 && candText === meta.text);
+
+      if (roleMatchesTarget && (ariaMatches || textMatchesTarget)) {
+        roleMatches.push(candidate);
+      } else if (ariaMatches || textMatchesTarget) {
+        textMatches.push(candidate);
+      }
+    }
+
+    const targetPool = roleMatches.length > 0 ? roleMatches : textMatches;
+    if (targetPool.length > 0) {
+      const targetNth = meta.nthIndex ?? 0;
+      const candidate = targetPool[targetNth] || targetPool[0];
+      if (candidate) {
+        this.idToElement.set(id, new WeakRef(candidate));
+        this.elementToId.set(candidate, id);
+        return candidate;
+      }
+    }
+
     return null;
   }
 
@@ -155,6 +207,7 @@ export class ElementRegistry {
   clear(): void {
     this.idToElement.clear();
     this.idToMeta.clear();
+    this.roleNameCounts.clear();
     this.nextId = 1;
   }
 
