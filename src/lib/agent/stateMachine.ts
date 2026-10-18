@@ -204,7 +204,7 @@ export class AgentStateMachine {
           }
         }
 
-        this.contextManager.initializeRun(this.state.goal, observationText);
+        this.contextManager.initializeRun(this.state.goal, observationText, this.lastKnownUrl);
       } else {
         const previousUrl = this.lastKnownUrl;
         const currentUrl = await this.waitForTabSettled(this.state.tabId, previousUrl);
@@ -235,7 +235,7 @@ export class AgentStateMachine {
         }
 
         observationText = stepObs;
-        this.contextManager.appendStepObservation(currentStepNum, observationText);
+        this.contextManager.appendStepObservation(currentStepNum, observationText, this.lastKnownUrl);
       }
 
       this.updateTelemetry();
@@ -400,11 +400,12 @@ export class AgentStateMachine {
       shouldComplete = false;
     }
 
-    // Do not allow premature completion on multi-step goals if actions were just executed and thought indicates more steps remain
+    // Dassi ICt continuation rule: Do not allow premature completion if actions were executed
+    // and thought indicates an intermediate action or upcoming steps
     if (
       shouldComplete &&
       actions.length > 0 &&
-      /\b(now i will|next i will|opening|clicking module|let's open|scrolling to find)\b/i.test(
+      /\b(now i will|next i will|next step|opening|clicking module|let's open|scrolling to find|proceeding to|in progress|starting lecture|playing video|watching lecture|first step)\b/i.test(
         this.state.currentThought
       )
     ) {

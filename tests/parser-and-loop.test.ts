@@ -266,6 +266,38 @@ describe('Vision AI Smooth Agent Loop & Resilient Parser Suite', () => {
       expect(state.currentThought).toContain('project documentation overview');
     });
 
+    it('prevents premature completion on intermediate action steps even if complete was true', async () => {
+      const router = new LLMRouter({ apiKeys: { groq: 'test-key' } });
+
+      vi.spyOn(router, 'executeStep')
+        .mockResolvedValueOnce({
+          response: {
+            thought: 'Clicking module accordion to expand lessons, now I will proceed to the first lesson.',
+            actions: [{ type: 'click', id: 3 }],
+            complete: true, // premature completion flag from LLM
+          },
+          activeTier: 1,
+          provider: 'groq',
+        })
+        .mockResolvedValueOnce({
+          response: {
+            thought: 'Course lecture completed and verified. Entire goal is finished.',
+            actions: [],
+            complete: true,
+          },
+          activeTier: 1,
+          provider: 'groq',
+        });
+
+      const stateMachine = new AgentStateMachine(router);
+      await stateMachine.startTask('Complete Coursera lesson 1', 1);
+
+      const state = stateMachine.getState();
+      expect(state.status).toBe('completed');
+      expect(state.stepNumber).toBe(2);
+      expect(state.completedTraces.length).toBeGreaterThanOrEqual(1);
+    });
+
     it('executes navigate and go_back actions and records traces', async () => {
       const router = new LLMRouter({ apiKeys: { groq: 'test-key' } });
 
