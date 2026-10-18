@@ -1,0 +1,162 @@
+{
+  "action": {
+    "default_icon": {
+      "128": "assets/icon128.png"
+    },
+    "default_title": "Open Vision AI"
+  },
+  "background": {
+    "service_worker": "background/index.js",
+    "type": "module"
+  },
+  "commands": {
+    "_execute_action": {
+      "description": "__MSG_openDassi__"
+    },
+    "open-dassi": {
+      "description": "__MSG_openDassiSidepanel__",
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      }
+    },
+    "stop-run": {
+      "description": "__MSG_stopRunningAgent__",
+      "suggested_key": {
+        "default": "Ctrl+Shift+C",
+        "mac": "Command+Shift+C"
+      }
+    },
+    "toggle-dictation": {
+      "description": "Start or stop voice dictation in Dassi",
+      "suggested_key": {
+        "default": "Ctrl+Shift+Space",
+        "mac": "Command+Shift+Space"
+      }
+    }
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "content/neon-overlay.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "js": [
+        "content/suggestions-widget.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "js": [
+        "content/webapp-bridge.js"
+      ],
+      "matches": [
+        "https://app.dassi.ai/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "js": [
+        "content/site-auth-bridge.js"
+      ],
+      "matches": [
+        "https://dassi.ai/*",
+        "https://www.dassi.ai/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    "sandbox": "sandbox allow-scripts allow-modals; default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://esm.run/ https://esm.sh/ https://cdn.jsdelivr.net/ https://unpkg.com/ https://cdn.skypack.dev/ https://cdnjs.cloudflare.com/; script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' https://esm.run/ https://esm.sh/ https://cdn.jsdelivr.net/ https://unpkg.com/ https://cdn.skypack.dev/ https://cdnjs.cloudflare.com/; connect-src https://esm.run/ https://esm.sh/ https://cdn.jsdelivr.net/ https://unpkg.com/ https://cdn.skypack.dev/ https://cdnjs.cloudflare.com/; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; object-src 'none'; base-uri 'none'"
+  },
+  "default_locale": "en",
+  "description": "Autonomous Chrome browser agent powered by your own API keys (Gemini, Groq, OpenRouter, Anthropic, OpenAI, Ollama). Completely free to use.",
+  "host_permissions": [
+    "https://api.openai.com/*",
+    "https://*.supabase.co/*",
+    "https://supabase.dassi.ai/*",
+    "https://dassi.ai/*",
+    "https://auth.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://accounts.google.com/*",
+    "https://oauth2.googleapis.com/*",
+    "https://www.googleapis.com/*",
+    "https://cloudcode-pa.googleapis.com/*",
+    "https://relay.dassi.ai/*",
+    "https://api.deepseek.com/*",
+    "https://openrouter.ai/api/*",
+    "https://api.moonshot.ai/*",
+    "https://api.x.ai/*",
+    "https://api.groq.com/*",
+    "https://api.mistral.ai/*",
+    "https://api.novita.ai/*",
+    "https://*.openai.azure.com/*",
+    "https://*.services.ai.azure.com/*",
+    "https://*.cognitiveservices.azure.com/*",
+    "<all_urls>"
+  ],
+  "icons": {
+    "128": "assets/icon128.png"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2JiqdHxOi0iZs8kIu1q405gk2/iVmGjx+5EYuC0VxFUdKBlCVtLNb8uegMtMUV23ACJzM/+0NL5KZjjvcai+sEWOLOOQSZi+at8UmNJ1IIBnjl0i7NDZXC308WytaW5yndBQGZfmOOT2Sxz/fTJuNTT0szCVKH8H78KfTjqFzA4RO837tRjfnGpsLrWKdgm8DM8eh746R5Pom0VdKAz4jk7OY35AEVJ3B+MHMLCS95Q8V0DsjfWWuASGIEFH9VNcVqDVS9DFXbx5lqtczTUtXz1HfvNKkww67nu8aPUwgjx9CD2z/q3TE0G4V69qk8lnctq3qijXb4Tq9fZzuMMhhQIDAQAB",
+  "manifest_version": 3,
+  "message_serialization": "structured_clone",
+  "minimum_chrome_version": "120",
+  "name": "Vision AI — Free Autonomous Browser Agent",
+  "omnibox": {
+    "keyword": "d"
+  },
+  "optional_permissions": [
+    "history"
+  ],
+  "options_page": "options.html",
+  "permissions": [
+    "activeTab",
+    "sidePanel",
+    "storage",
+    "debugger",
+    "tabs",
+    "tabGroups",
+    "downloads",
+    "scripting",
+    "identity",
+    "identity.email",
+    "cookies",
+    "offscreen",
+    "alarms",
+    "notifications",
+    "userScripts"
+  ],
+  "sandbox": {
+    "pages": [
+      "sandbox.html",
+      "preview-frame.html"
+    ]
+  },
+  "short_name": "Vision AI",
+  "version": "0.95.0",
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "assets/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+   "appDescription": {
+      "message": "Agent navigateur IA qui automatise le travail. Connectez Claude, GPT, Gemini et plus. Confidentialité avant tout."
+   },
+   "appName": {
+      "message": "dassi : Agent navigateur IA pour Claude, GPT et Gemini"
+   },
+   "appShortName": {
+      "message": "dassi AI"
+   },
+   "openDassi": {
+      "message": "Ouvrir le panneau latéral dassi"
+   },
+   "openDassiSidepanel": {
+      "message": "Ouvrir le panneau latéral dassi"
+   },
+   "stopRunningAgent": {
+      "message": "Arrêter l'agent en cours d'exécution"
+   }
+}

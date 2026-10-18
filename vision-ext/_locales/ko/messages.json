@@ -1,0 +1,20 @@
+{
+   "appDescription": {
+      "message": "작업을 자동화하는 AI 브라우저 에이전트. Claude, GPT, Gemini 등을 연결하세요. 프라이버시 우선."
+   },
+   "appName": {
+      "message": "dassi: Claude, GPT, Gemini AI 브라우저 에이전트"
+   },
+   "appShortName": {
+      "message": "dassi AI"
+   },
+   "openDassi": {
+      "message": "dassi 사이드 패널 열기"
+   },
+   "openDassiSidepanel": {
+      "message": "dassi 사이드패널 열기"
+   },
+   "stopRunningAgent": {
+      "message": "실행 중인 에이전트 중지"
+   }
+}

@@ -1,0 +1,20 @@
+{
+   "appDescription": {
+      "message": "KI-Agent für deinen Browser. Automatisiert Aufgaben auf jeder Seite: liest Seiten, füllt Formulare. Claude, GPT, Gemini, DeepSeek"
+   },
+   "appName": {
+      "message": "dassi: KI-Agent für Chrome — Browser-Automatisierung"
+   },
+   "appShortName": {
+      "message": "dassi AI"
+   },
+   "openDassi": {
+      "message": "dassi-Seitenleiste öffnen"
+   },
+   "openDassiSidepanel": {
+      "message": "dassi-Seitenleiste öffnen"
+   },
+   "stopRunningAgent": {
+      "message": "Laufenden Agenten stoppen"
+   }
+}

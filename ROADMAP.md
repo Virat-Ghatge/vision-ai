@@ -34,3 +34,13 @@
 - [x] Gate B: Unit test suite execution (`npm run test` passes all 66 tests across 6 suites).
 - [x] Gate C: Production build verification (`npm run build` outputs `.output/chrome-mv3`).
 - [x] Final update of `LOOP_STATE.md` and repository state.
+
+### Phase 5: Free BYOK Standalone Extension (Vision AI Free Dassi Engine)
+- [x] Complete Supabase auth bypass (`uvt() -> true`, `AUTH_CHECK_DONE -> ready`, `rj() -> success`).
+- [x] Neutralize paywalls, credit restrictions, and upgrade modals (`UWt`, `PWt`, `Mfe`, `LWt` silenced).
+- [x] Permanent BYOK permission enablement (`vfe()`, `DDn()`, `skn()`, `cde()` permanently return `true`).
+- [x] Free default provider configured to Google Gemini (`selectedProvider: "google"`), with Groq, OpenRouter, Anthropic, OpenAI, DeepSeek, and Custom (Ollama) selectable.
+- [x] Options UI re-routed to open `#models` tab directly and maintain active `providerHandlers` without requiring cloud login.
+- [x] Extension rebranded to **Vision AI — Free Autonomous Browser Agent** in `manifest.json`, `_locales`, `sidepanel.html`, and `options.html`.
+- [x] Verified empirically with 21 automated validation checks passing (`scripts/verify_free_vision.mjs`).
+- [x] Built and synchronized to `vision-ext/` and `.output/chrome-mv3`.

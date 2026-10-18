@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vision AI Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/options/options.css">
+  <style>
+    :root {
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --orange: #FF5C00;
+      --orange-light: #FFF4ED;
+      --black: #000000;
+      --gray-900: #1A1A1A;
+      --gray-700: #333333;
+      --gray-600: #666666;
+      --gray-500: #999999;
+      --gray-300: #E5E5E5;
+      --gray-200: #F0F0F0;
+      --gray-100: #F8F8F8;
+      --white: #FFFFFF;
+      --green: #22C55E;
+      --red: #CC0000;
+      --blue: #4285F4;
+      --anthropic: #D97757;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--gray-100);
+      min-height: 100vh;
+      color: var(--black);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    #root {
+      width: 100%;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+    }
+
+    /* Reason: tier cards are emulated buttons (div role="button" tabIndex=0). They need a
+       visible focus indicator for keyboard users — :focus-visible avoids showing the outline
+       on mouse clicks. Color matches the selected-card border tone for visual consistency. */
+    [data-tier-card]:focus-visible {
+      outline: 2px solid #FF8A4D;
+      outline-offset: 2px;
+    }
+
+    /* Reason: the PlanTab buttons use inline React styles, which cannot express :hover —
+       these rules pair with the base styles in PlanTab.styles.ts. A brightness filter keeps
+       every color single-sourced there (no hex duplicated here) and works for both the
+       light-orange CTA and the solid-green WeChat button. :not(:disabled) skips the
+       current-plan and in-flight (isSubscribing) states. */
+    .tier-btn-cta:hover:not(:disabled) {
+      filter: brightness(0.95);
+    }
+    .tier-btn-wechat:hover:not(:disabled) {
+      filter: brightness(0.92);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/options/options.js"></script>
+</body>
+</html>

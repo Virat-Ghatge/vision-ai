@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wxt",
-    "build": "wxt build",
+    "build": "node scripts/build_free_vision.mjs",
+    "build:wxt": "wxt build",
+    "build:vision": "node scripts/build_free_vision.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

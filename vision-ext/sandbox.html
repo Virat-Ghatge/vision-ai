@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // Reason: bootstrap.js is a module — if it throws while evaluating (a
+      // missing API in this realm, a parse error), it posts nothing and the host
+      // can only report "Sandbox failed to start" after its readiness timeout,
+      // with no cause. These lines make the real error visible instead.
+      window.addEventListener('error', function (e) {
+        parent.postMessage({ type: 'sandbox-boot-error', message: String((e && e.message) || e) }, '*');
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        parent.postMessage({ type: 'sandbox-boot-error', message: String((e && e.reason) || e) }, '*');
+      });
+      parent.postMessage({ type: 'sandbox-boot' }, '*');
+    </script>
+  </head>
+  <body>
+    <script type="module" src="/sandbox/bootstrap.js"></script>
+  </body>
+</html>

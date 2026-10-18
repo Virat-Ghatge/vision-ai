@@ -1,0 +1,20 @@
+{
+   "appDescription": {
+      "message": "ИИ-агент для браузера. Автоматизирует задачи на любом сайте: читает страницы, заполняет формы. Claude, GPT, Gemini, DeepSeek"
+   },
+   "appName": {
+      "message": "dassi: ИИ-агент для Chrome — автоматизация браузера"
+   },
+   "appShortName": {
+      "message": "dassi AI"
+   },
+   "openDassi": {
+      "message": "Открыть боковую панель dassi"
+   },
+   "openDassiSidepanel": {
+      "message": "Открыть боковую панель dassi"
+   },
+   "stopRunningAgent": {
+      "message": "Остановить работающего агента"
+   }
+}

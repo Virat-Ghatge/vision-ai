@@ -1,0 +1,20 @@
+{
+   "appDescription": {
+      "message": "自动化工作的 AI 浏览器智能体。连接 Claude、GPT、Gemini 等模型。隐私优先。"
+   },
+   "appName": {
+      "message": "dassi: Claude、GPT、Gemini AI 浏览器智能体"
+   },
+   "appShortName": {
+      "message": "dassi AI"
+   },
+   "openDassi": {
+      "message": "打开 dassi 侧边栏"
+   },
+   "openDassiSidepanel": {
+      "message": "打开 dassi 侧边栏"
+   },
+   "stopRunningAgent": {
+      "message": "停止运行中的智能体"
+   }
+}

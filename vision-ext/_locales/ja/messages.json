@@ -1,0 +1,20 @@
+{
+   "appDescription": {
+      "message": "作業を自動化するAIブラウザエージェント。Claude、GPT、Geminiなどを接続。プライバシー重視。"
+   },
+   "appName": {
+      "message": "dassi: Claude、GPT、Gemini対応 AIブラウザエージェント"
+   },
+   "appShortName": {
+      "message": "dassi AI"
+   },
+   "openDassi": {
+      "message": "dassiサイドパネルを開く"
+   },
+   "openDassiSidepanel": {
+      "message": "dassiサイドパネルを開く"
+   },
+   "stopRunningAgent": {
+      "message": "実行中のエージェントを停止"
+   }
+}
