@@ -6,7 +6,7 @@ import { SkillsDrawer } from './components/SkillsDrawer';
 import { ApprovalModal } from './components/ApprovalModal';
 import { TaskStream, QuickModelOption } from './components/TaskStream';
 import { PageInspectorPanel } from './components/PageInspectorPanel';
-import { SiteSkill } from '../../src/lib/skills/skillStore';
+import { globalSkillStore, SiteSkill } from '../../src/lib/skills/skillStore';
 import {
   KeyRound,
   Sparkles,
@@ -201,6 +201,26 @@ export default function App(): React.JSX.Element {
   const handleStartTask = async (taskGoal?: string) => {
     const goalToRun = taskGoal ?? prompt;
     if (!goalToRun.trim()) return;
+
+    // Dassi slash skill command interceptor (/<skill_name> directly executes zero-token reflex)
+    if (goalToRun.startsWith('/')) {
+      const slashQuery = goalToRun.slice(1).trim().toLowerCase();
+      try {
+        const allSkills = await globalSkillStore.listSkills();
+        const matched = allSkills.find(
+          (s) =>
+            s.id.toLowerCase() === slashQuery ||
+            s.goalPattern.toLowerCase().includes(slashQuery) ||
+            s.hostname.toLowerCase().includes(slashQuery)
+        );
+        if (matched) {
+          handleRunSkill(matched);
+          return;
+        }
+      } catch (err) {
+        console.warn('[Vision AI] Failed to match slash command against skills:', err);
+      }
+    }
 
     setActiveSection('chat');
     let targetTabId = currentTabId;

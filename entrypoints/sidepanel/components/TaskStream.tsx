@@ -429,6 +429,14 @@ export function TaskStream({
           </div>
         )}
 
+        {prompt.startsWith('/') && (
+          <div className="flex items-center gap-1.5 text-[11px] text-vision-tealBright bg-teal-950/40 border border-vision-teal/40 rounded-lg px-2.5 py-1">
+            <Sparkles className="w-3.5 h-3.5 text-vision-tealBright animate-pulse shrink-0" />
+            <span className="font-semibold">Slash Skill Mode:</span>
+            <span className="text-slate-300">Type /&lt;skill_name&gt; for 0-token direct reflex execution</span>
+          </div>
+        )}
+
         <div className="relative flex items-end gap-1.5">
           <textarea
             value={prompt}

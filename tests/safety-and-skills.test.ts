@@ -95,6 +95,36 @@ describe('M4: Skills Cache & Human-in-the-Loop Safety Interceptor Suite', () => 
       );
       expect(noMatch).toBeNull();
     });
+
+    it('resolves skill via slash command query matching id or goal keywords', async () => {
+      const courseraSkill: SiteSkill = {
+        id: 'coursera_complete',
+        hostname: 'coursera.org',
+        pathnamePattern: '/learn/*',
+        goalPattern: 'open lecture and mark complete',
+        steps: [
+          { action: 'click', selector: 'button.lecture-item' },
+          { action: 'wait', value: '1000' },
+        ],
+        tokenSavings: 2500,
+        timesExecuted: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await skillStore.saveSkill(courseraSkill);
+
+      const allSkills = await skillStore.listSkills();
+      const slashQuery = 'coursera_complete';
+      const matched = allSkills.find(
+        (s) =>
+          s.id.toLowerCase() === slashQuery ||
+          s.goalPattern.toLowerCase().includes(slashQuery) ||
+          s.hostname.toLowerCase().includes(slashQuery)
+      );
+      expect(matched).toBeDefined();
+      expect(matched?.id).toBe('coursera_complete');
+      expect(matched?.steps.length).toBe(2);
+    });
   });
 
   describe('State Machine Safety Interceptor Integration', () => {
