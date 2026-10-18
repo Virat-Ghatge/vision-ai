@@ -27,7 +27,7 @@
       }
     },
     "toggle-dictation": {
-      "description": "Start or stop voice dictation in Dassi",
+      "description": "Start or stop voice dictation in Vision AI",
       "suggested_key": {
         "default": "Ctrl+Shift+Space",
         "mac": "Command+Shift+Space"

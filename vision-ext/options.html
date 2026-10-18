@@ -71,6 +71,102 @@
       filter: brightness(0.92);
     }
   </style>
+
+  <style>
+    :root {
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --orange: #F59E0B; /* Marvel Vision Solar Mind Stone Gold */
+      --orange-light: rgba(245, 158, 11, 0.15);
+      --black: #F8FAFC; /* Platinum text in dark synthezoid theme */
+      --gray-900: #F1F5F9;
+      --gray-700: #CBD5E1;
+      --gray-600: #94A3B8;
+      --gray-500: #64748B;
+      --gray-300: #1E293B;
+      --gray-200: #161F30;
+      --gray-100: #0B0F19; /* Vibranium Obsidian Body */
+      --white: #111827; /* Dark Slate Cards */
+      --green: #10B981; /* Cybernetic Emerald */
+      --red: #BE123C; /* Synthezoid Velvet Crimson */
+      --blue: #38BDF8;
+      --anthropic: #F59E0B;
+
+      --gl-label: #F8FAFC !important;
+      --gl-secondary: #94A3B8 !important;
+      --gl-fill: #161F30 !important;
+      --gl-separator: rgba(255, 255, 255, 0.08) !important;
+      --gl-control-edge: rgba(245, 158, 11, 0.3) !important;
+      --gl-tint: #F59E0B !important;
+      --gl-focus: rgba(245, 158, 11, 0.35) !important;
+    }
+
+    body {
+      background-color: #0B0F19 !important;
+      color: #F8FAFC !important;
+    }
+
+    .settings-layout {
+      background-color: #0B0F19 !important;
+    }
+    .settings-header {
+      background-color: #111827 !important;
+      border-bottom: 1px solid #1E293B !important;
+    }
+    .settings-nav {
+      background-color: #0B0F19 !important;
+      border-right: 1px solid #1E293B !important;
+    }
+    .settings-nav-item {
+      color: #94A3B8 !important;
+    }
+    .settings-nav-item:hover {
+      background-color: #161F30 !important;
+      color: #F8FAFC !important;
+    }
+    .settings-nav-item.is-active {
+      background: linear-gradient(135deg, rgba(159, 18, 57, 0.3) 0%, rgba(245, 158, 11, 0.2) 100%) !important;
+      color: #FBBF24 !important;
+      border-left: 3px solid #F59E0B !important;
+      font-weight: 600 !important;
+    }
+    .settings-logo-icon {
+      background: linear-gradient(135deg, #9F1239 0%, #F59E0B 100%) !important;
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.4) !important;
+    }
+    .settings-logo-text {
+      background: linear-gradient(135deg, #FBBF24 0%, #F59E0B 50%, #E11D48 100%) !important;
+      -webkit-background-clip: text !important;
+      -webkit-text-fill-color: transparent !important;
+      font-weight: 700 !important;
+      font-size: 18px !important;
+    }
+    .settings-card, .gl-card {
+      background-color: #111827 !important;
+      border: 1px solid #1E293B !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+    }
+    .gl-field, input, select, textarea {
+      background-color: #161F30 !important;
+      color: #F8FAFC !important;
+      border: 1px solid #1E293B !important;
+    }
+    .gl-field:focus, input:focus, select:focus, textarea:focus {
+      border-color: #F59E0B !important;
+      outline: 2px solid rgba(245, 158, 11, 0.3) !important;
+    }
+    .gl-btn {
+      background: #161F30 !important;
+      color: #F8FAFC !important;
+      border: 1px solid #1E293B !important;
+    }
+    .gl-btn--prominent {
+      background: linear-gradient(135deg, #FBBF24 0%, #F59E0B 100%) !important;
+      color: #0B0F19 !important;
+      font-weight: 600 !important;
+      border: none !important;
+    }
+  </style>
 </head>
 <body>
   <div id="root"></div>

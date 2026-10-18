@@ -157,7 +157,7 @@ if(typeof globalThis.process==="undefined"){
        there and the ripple waits out the glide. */
     #dassi-sim-cursor {
       /* Dassi Orange: --primary in styles/globals.css, which this shadow root cannot read. */
-      --dassi-orange: oklch(0.705 0.191 41.116);
+      --dassi-orange: #F59E0B;
       --dassi-pointer-glide: 0.15s;
       position: fixed;
       inset: 0;
