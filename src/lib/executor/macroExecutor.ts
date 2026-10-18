@@ -412,17 +412,29 @@ export class MacroBatchExecutor {
           if (!res.success) throw new Error(res.error ?? 'Fill failed');
         } else if (targetEl) {
           targetEl.focus();
+          try {
+            if (typeof (targetEl as HTMLInputElement).select === 'function') {
+              (targetEl as HTMLInputElement).select();
+            }
+            if (typeof document !== 'undefined' && typeof document.execCommand === 'function') {
+              document.execCommand('selectAll', false, undefined);
+              document.execCommand('delete', false, undefined);
+            }
+          } catch {}
           if (targetEl instanceof HTMLInputElement || targetEl instanceof HTMLTextAreaElement) {
             const proto =
               targetEl instanceof HTMLInputElement
-                ? window.HTMLInputElement.prototype
-                : window.HTMLTextAreaElement.prototype;
+                ? (window.HTMLInputElement?.prototype || Object.getPrototypeOf(targetEl))
+                : (window.HTMLTextAreaElement?.prototype || Object.getPrototypeOf(targetEl));
             const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
             if (nativeSetter) {
               nativeSetter.call(targetEl, val);
             } else {
               targetEl.value = val;
             }
+            try {
+              targetEl.dispatchEvent(new InputEvent('beforeinput', { data: val, bubbles: true, composed: true }));
+            } catch {}
             targetEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
             targetEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
           } else if (targetEl.isContentEditable) {

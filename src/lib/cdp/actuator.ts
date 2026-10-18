@@ -172,17 +172,39 @@ export class CDPActuator {
         try {
           await this.click(coords);
 
-          for (const char of text) {
+          // Clear existing text first via selectAll keyboard shortcut in CDP
+          try {
             await this.sendCDPCommand('Input.dispatchKeyEvent', {
-              type: 'keyDown',
-              text: char,
-              unmodifiedText: char,
+              type: 'rawKeyDown',
+              commands: ['selectAll'],
+              key: 'a',
+              code: 'KeyA',
+              modifiers: 2,
             });
             await this.sendCDPCommand('Input.dispatchKeyEvent', {
               type: 'keyUp',
+              key: 'a',
+              code: 'KeyA',
             });
+          } catch {}
+
+          // Use Input.insertText for fast atomic text insertion (Dassi pattern)
+          try {
+            await this.sendCDPCommand('Input.insertText', { text });
+            return { success: true, method: 'cdp' };
+          } catch {
+            for (const char of text) {
+              await this.sendCDPCommand('Input.dispatchKeyEvent', {
+                type: 'keyDown',
+                text: char,
+                unmodifiedText: char,
+              });
+              await this.sendCDPCommand('Input.dispatchKeyEvent', {
+                type: 'keyUp',
+              });
+            }
+            return { success: true, method: 'cdp' };
           }
-          return { success: true, method: 'cdp' };
         } catch (err) {
           console.warn('[CDPActuator] CDP typing failed, falling back to synthetic:', err);
         }
@@ -192,16 +214,38 @@ export class CDPActuator {
     if (fallbackElement) {
       try {
         fallbackElement.focus();
+        try {
+          if (typeof (fallbackElement as HTMLInputElement).select === 'function') {
+            (fallbackElement as HTMLInputElement).select();
+          }
+          if (typeof document !== 'undefined' && typeof document.execCommand === 'function') {
+            document.execCommand('selectAll', false, undefined);
+            document.execCommand('delete', false, undefined);
+          }
+        } catch {}
+
         if (
           fallbackElement instanceof HTMLInputElement ||
           fallbackElement instanceof HTMLTextAreaElement
         ) {
-          fallbackElement.value = text;
-          fallbackElement.dispatchEvent(new Event('input', { bubbles: true }));
-          fallbackElement.dispatchEvent(new Event('change', { bubbles: true }));
+          const proto =
+            fallbackElement instanceof HTMLInputElement
+              ? (window.HTMLInputElement?.prototype || Object.getPrototypeOf(fallbackElement))
+              : (window.HTMLTextAreaElement?.prototype || Object.getPrototypeOf(fallbackElement));
+          const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          if (nativeSetter) {
+            nativeSetter.call(fallbackElement, text);
+          } else {
+            fallbackElement.value = text;
+          }
+          try {
+            fallbackElement.dispatchEvent(new InputEvent('beforeinput', { data: text, bubbles: true, composed: true }));
+          } catch {}
+          fallbackElement.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+          fallbackElement.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
         } else if (fallbackElement.isContentEditable) {
           fallbackElement.textContent = text;
-          fallbackElement.dispatchEvent(new Event('input', { bubbles: true }));
+          fallbackElement.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
         }
         return { success: true, method: 'synthetic' };
       } catch (err) {

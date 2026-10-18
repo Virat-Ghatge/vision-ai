@@ -171,6 +171,18 @@ describe('M3: CDP Actuator, Speculative Macro-Batch Runner & Vision Fallback Sui
       expect(typeRes.success).toBe(true);
       expect(typeRes.method).toBe('synthetic');
       expect(input.value).toBe('hello world');
+
+      // Subsequent type replaces previous content cleanly (React clearing behavior)
+      const events: string[] = [];
+      input.addEventListener('beforeinput', (e) => events.push(e.type));
+      input.addEventListener('input', (e) => events.push(e.type));
+      input.addEventListener('change', (e) => events.push(e.type));
+
+      const typeRes2 = await actuator.type('new text', null, input);
+      expect(typeRes2.success).toBe(true);
+      expect(input.value).toBe('new text');
+      expect(events).toContain('input');
+      expect(events).toContain('change');
     });
 
     it('submits form on press Enter in input field', async () => {
