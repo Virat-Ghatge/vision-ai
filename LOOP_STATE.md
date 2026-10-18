@@ -1,10 +1,10 @@
 # LOOP_STATE.md — Loop Engineering Protocol State
 
 ## Current Active Task
-- **Task ID:** `M9.1`
+- **Task ID:** `M10.1`
 - **Status:** `[x]` Completed
-- **Completed At:** 2026-10-17
-- **Goal:** Marvel Vision UI, Thinking Steps Stream, Self-Healing DOM Registry, and Continuous Step Distillation.
+- **Completed At:** 2026-10-19
+- **Goal:** Dassi AI REA Core Engine Reconstruction: Self-Healing Element Registry (role+nthIndex), React-Compatible Input Clearing & CDP Input.insertText, Untrusted Web Content Shield, State Machine Continuation Rules, and Slash Command Trigger.
 
 ---
 
@@ -56,6 +56,13 @@
 ### Milestone 9: Marvel Vision UI & Multi-Step LMS Engine
 - [x] `M9.1` Marvel Vision UI, Thinking Steps Stream, Self-Healing DOM Registry, and Continuous Step Distillation (`entrypoints/sidepanel/App.tsx`, `src/lib/dom/distiller.ts`, `src/lib/executor/macroExecutor.ts`, `src/lib/agent/stateMachine.ts`).
 
+### Milestone 10: Dassi AI REA Core Engine Reconstruction
+- [x] `M10.1` Self-Healing Element Registry (role+nthIndex algorithm) & Landmark Container Pruning (`src/lib/dom/distiller.ts`, `tests/dom-distiller.test.ts`).
+- [x] `M10.2` React-Compatible Input Clearing (`execCommand` selectAll/delete) & CDP `Input.insertText` Actuation (`src/lib/cdp/actuator.ts`, `src/lib/executor/macroExecutor.ts`, `tests/actuator-and-vision.test.ts`).
+- [x] `M10.3` Untrusted Web Content Shield & Prompt Injection Defense (`src/lib/llm/contextManager.ts`, `tests/router-and-context.test.ts`).
+- [x] `M10.4` Agent State Machine Continuation Rules (`ICt`-inspired multi-step persistence) & Anti-Stall Guardrails (`src/lib/agent/stateMachine.ts`, `tests/parser-and-loop.test.ts`).
+- [x] `M10.5` Direct Slash Command (`/<skill>`) Trigger & Inline Quick Reflex Banner (`entrypoints/sidepanel/App.tsx`, `entrypoints/sidepanel/components/TaskStream.tsx`, `tests/safety-and-skills.test.ts`).
+
 ---
 
 ## Verification Log & Metrics
@@ -89,11 +96,17 @@
 | 26 | M8.1 | PASS (0 errors) | PASS (60 tests) | PASS (420.98 kB bundle) | N/A (Multi-Tab Manager) | TabAgentManager with per-tab isolated state machines, storage keys, LIST_TAB_SESSIONS, open_tab, switch_tab |
 | 27 | M8.2 | PASS (0 errors) | PASS (60 tests) | PASS (427.68 kB bundle) | N/A (Multi-Tab UI) | Per-tab workspace binding, draft prompt caching per tab, TabSelectorBar with live background badges |
 | 28 | M9.1 | PASS (0 errors) | PASS (62 tests) | PASS (451.65 kB bundle) | PASS (Verified) | Marvel Vision UI, Thinking Steps Stream, Self-Healing DOM Registry, and Continuous Step Distillation |
+| 29 | M10.1 | PASS (0 errors) | PASS (66 tests) | PASS (454.71 kB bundle) | PASS (REA Verified) | Dassi AI REA Core Engine Reconstruction (role+nthIndex self-healing, input clearing + insertText, untrusted content shield, ICt continuation, slash skill trigger) |
 
 ---
 
 ## Current Status
-Milestone 9 completed and verified across all quality gates!
-- Marvel Vision UI & Multi-Step LMS Engine unpacked and active with thinking steps stream, self-healing DOM registry, and continuous step distillation.
-- Coursera & Cisco NetAcad complex LMS automation engine fully operational with deep Shadow DOM walker, smart inner-container scrolling, composed pointer events, SCORM child frame discovery & execution, and HTML5 video automation.
-- Multi-Tab Isolated Agent Sessions (Dassi AI style) fully operational with per-tab state machines, isolated session storage keys, and live TabSelectorBar workspace switching with background agent badges.
+Milestone 10 completed and verified across all quality gates!
+- Dassi AI REA Core Engine Reconstruction fully implemented and tested across 5 atomic micro-tasks.
+- Self-Healing Element Registry upgraded with role + accessible name + nthIndex position matching algorithm, preserving resilience across React SPA DOM re-renders.
+- Input clearing utilizes React-compatible selectAll and delete command execution, combined with CDP `Input.insertText` for atomic text entry.
+- Untrusted Web Content Shield strictly encloses all page observations in `<untrusted_web_content>` boundaries for prompt injection immunity while maintaining 100% byte-stable prefixes.
+- Agent State Machine reinforces multi-step continuation rules (inspired by Dassi `ICt`), preventing premature termination on intermediate actions.
+- Direct Slash Command (`/<skill>`) trigger and visual mode indicator enabled in Sidepanel UI.
+- All 66 tests passing with 0 errors on strict TypeScript and production WXT build (`.output/chrome-mv3`).
+
