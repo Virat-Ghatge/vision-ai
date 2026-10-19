@@ -251,7 +251,7 @@ export function ApiKeyVault({ isOpen, onClose }: Props): React.JSX.Element | nul
         <div className="flex items-start gap-2 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 text-[11px] text-slate-400">
           <ShieldCheck className="w-4 h-4 text-orbit-neon shrink-0 mt-0.5" />
           <span>
-            Choose models across providers (just like Dassi AI). OpenRouter, Groq, and Gemini models are dynamically discovered and auto-failover enabled.
+            Choose models across providers with Vision AI. OpenRouter, Groq, and Gemini models are dynamically discovered and auto-failover enabled.
           </span>
         </div>
 

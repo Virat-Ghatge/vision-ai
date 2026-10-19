@@ -146,14 +146,63 @@
       border: 1px solid #1E293B !important;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
     }
-    .gl-field, input, select, textarea {
+    /* Dark theme text boxes, inputs, textareas, and select dropdowns */
+    .gl-field,
+    .gl-popup,
+    .gl-textarea,
+    input,
+    select,
+    textarea {
       background-color: #161F30 !important;
       color: #F8FAFC !important;
       border: 1px solid #1E293B !important;
+      box-shadow: 0 0 0 1px #1E293B !important;
     }
-    .gl-field:focus, input:focus, select:focus, textarea:focus {
+    .gl-field::placeholder,
+    .gl-textarea::placeholder,
+    input::placeholder,
+    textarea::placeholder,
+    ::-webkit-input-placeholder,
+    ::-moz-placeholder {
+      color: #64748B !important;
+      opacity: 1 !important;
+    }
+    .gl-field:focus,
+    .gl-popup:focus,
+    .gl-textarea:focus,
+    input:focus,
+    select:focus,
+    textarea:focus {
       border-color: #F59E0B !important;
       outline: 2px solid rgba(245, 158, 11, 0.3) !important;
+      box-shadow: 0 0 0 1px #F59E0B, 0 0 0 4px rgba(245, 158, 11, 0.2) !important;
+    }
+    select option,
+    .gl-popup option {
+      background-color: #161F30 !important;
+      color: #F8FAFC !important;
+    }
+    .gl-chip {
+      background: #161F30 !important;
+      color: #94A3B8 !important;
+      border: 1px solid #1E293B !important;
+    }
+    .gl-chip:hover {
+      background: #1E293B !important;
+      color: #F8FAFC !important;
+    }
+    .gl-chip[aria-pressed="true"] {
+      background: linear-gradient(135deg, rgba(159, 18, 57, 0.35) 0%, rgba(245, 158, 11, 0.25) 100%) !important;
+      color: #FBBF24 !important;
+      border-color: #F59E0B !important;
+    }
+    .gl-chip[aria-pressed="true"] .gl-chip-count {
+      color: #FBBF24 !important;
+    }
+    .gl-kbd {
+      background: #161F30 !important;
+      color: #F8FAFC !important;
+      box-shadow: 0 0 0 1px #1E293B !important;
     }
     .gl-btn {
       background: #161F30 !important;

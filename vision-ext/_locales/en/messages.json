@@ -1,20 +1,20 @@
 {
-   "appDescription": {
-      "message": "Free autonomous AI agent for your browser. Automates tasks on any site using your own API keys (Gemini, Groq, OpenRouter, Claude, GPT, Ollama)."
-   },
-   "appName": {
-      "message": "Vision AI — Autonomous Browser Agent (Free BYOK)"
-   },
-   "appShortName": {
-      "message": "Vision AI"
-   },
-   "openDassi": {
-      "message": "Open Vision AI side panel"
-   },
-   "openDassiSidepanel": {
-      "message": "Open Vision AI side panel"
-   },
-   "stopRunningAgent": {
-      "message": "Stop the running agent"
-   }
+  "appDescription": {
+    "message": "Free autonomous AI agent for your browser. Automates tasks on any site using your own API keys (Gemini, Groq, OpenRouter, Claude, GPT, Ollama)."
+  },
+  "appName": {
+    "message": "Vision"
+  },
+  "appShortName": {
+    "message": "Vision"
+  },
+  "openDassi": {
+    "message": "Open Vision side panel"
+  },
+  "openDassiSidepanel": {
+    "message": "Open Vision side panel"
+  },
+  "stopRunningAgent": {
+    "message": "Stop the running agent"
+  }
 }

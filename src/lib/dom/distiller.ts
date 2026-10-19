@@ -111,7 +111,7 @@ export class ElementRegistry {
 
   /**
    * Deep self-healing fallback used by MacroBatchExecutor when a React SPA re-mounts a button/link.
-   * Utilizes Dassi Dsn algorithm (role + accessible name + nthIndex position matching).
+   * Utilizes Dsn algorithm (role + accessible name + nthIndex position matching).
    */
   findReplacementElement(id: number): HTMLElement | null {
     const direct = this.getElement(id);

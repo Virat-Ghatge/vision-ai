@@ -312,7 +312,7 @@ describe('M2.3: DOM Distillation & Mutation Delta Benchmark Suite', () => {
     // Original references are now disconnected
     expect(registry.getElement(id1)).toBeNull();
 
-    // Dassi-inspired nthIndex self-healing locates the exact corresponding sibling replacement
+    // NthIndex self-healing locates the exact corresponding sibling replacement
     const healed1 = registry.findReplacementElement(id1);
     expect(healed1).not.toBeNull();
     expect(healed1).toBe(newButtons[1]);

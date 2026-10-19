@@ -400,7 +400,7 @@ export class AgentStateMachine {
       shouldComplete = false;
     }
 
-    // Dassi ICt continuation rule: Do not allow premature completion if actions were executed
+    // Continuation rule: Do not allow premature completion if actions were executed
     // and thought indicates an intermediate action or upcoming steps
     if (
       shouldComplete &&

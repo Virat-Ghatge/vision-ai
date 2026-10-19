@@ -5,7 +5,7 @@ const bg = fs.readFileSync('vision-ext/background/index.js', 'utf-8');
 const worker = fs.readFileSync('vision-ext/offscreen/agent-worker.js', 'utf-8');
 const options = fs.readFileSync('vision-ext/options/options.js', 'utf-8');
 
-console.log('=== Verifying Free Vision AI (Dassi BYOK Clone) ===\n');
+console.log('=== Verifying Free Vision AI Autonomous Extension ===\n');
 
 const checks = [
   {

@@ -1,17 +1,37 @@
+# Dependencies & build output
 node_modules/
 .output/
 .wxt/
 dist/
 coverage/
+targets/
+
+# IDE & agent local state
+.gemini/
+.gsd/
+.agent/
+.agents/
+.idea/
+.vscode/
+
+# Environment variables & secrets
+.env
+.env.local
+.env.*.local
+
+# Logs and OS files
 *.log
 .DS_Store
 Thumbs.db
-.env
-.env.local
 
-# Media & Screen Recordings
+# Media & screen recordings
 *.mp4
 *.webm
 *.mov
 *.mkv
 *.avi
+
+# Temporary bundles & scratch files
+*.bundle
+*.mjs.bak
+scratch/

@@ -1,20 +1,20 @@
 {
-   "appDescription": {
-      "message": "وكيل ذكاء اصطناعي لمتصفحك. يقرأ الصفحات ويملأ النماذج وينجز العمل على أي موقع. يدعم Claude وGPT وGemini وDeepSeek"
-   },
-   "appName": {
-      "message": "dassi: وكيل ذكاء اصطناعي للمتصفح — أتمتة المهام"
-   },
-   "appShortName": {
-      "message": "dassi AI"
-   },
-   "openDassi": {
-      "message": "فتح اللوحة الجانبية لـ dassi"
-   },
-   "openDassiSidepanel": {
-      "message": "فتح اللوحة الجانبية لـ dassi"
-   },
-   "stopRunningAgent": {
-      "message": "إيقاف الوكيل قيد التشغيل"
-   }
+  "appDescription": {
+    "message": "وكيل ذكاء اصطناعي لمتصفحك. يقرأ الصفحات ويملأ النماذج وينجز العمل على أي موقع. يدعم Claude وGPT وGemini وDeepSeek"
+  },
+  "appName": {
+    "message": "Vision: وكيل ذكاء اصطناعي للمتصفح — أتمتة المهام"
+  },
+  "appShortName": {
+    "message": "Vision"
+  },
+  "openDassi": {
+    "message": "فتح اللوحة الجانبية لـ Vision"
+  },
+  "openDassiSidepanel": {
+    "message": "فتح اللوحة الجانبية لـ Vision"
+  },
+  "stopRunningAgent": {
+    "message": "إيقاف الوكيل قيد التشغيل"
+  }
 }

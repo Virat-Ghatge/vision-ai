@@ -188,7 +188,7 @@ export class CDPActuator {
             });
           } catch {}
 
-          // Use Input.insertText for fast atomic text insertion (Dassi pattern)
+          // Use Input.insertText for fast atomic text insertion
           try {
             await this.sendCDPCommand('Input.insertText', { text });
             return { success: true, method: 'cdp' };

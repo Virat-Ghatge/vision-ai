@@ -1,4 +1,4 @@
-// Dassi Chrome Extension v0.95.0
+// Vision AI Chrome Extension
 // © 2026 Omnify Labs. All rights reserved.
 // Unauthorized copying or distribution is strictly prohibited.
 if(typeof WorkerGlobalScope!=="undefined"&&self instanceof WorkerGlobalScope&&typeof globalThis.chrome==="undefined"){

@@ -202,7 +202,7 @@ export default function App(): React.JSX.Element {
     const goalToRun = taskGoal ?? prompt;
     if (!goalToRun.trim()) return;
 
-    // Dassi slash skill command interceptor (/<skill_name> directly executes zero-token reflex)
+    // Slash skill command interceptor (/<skill_name> directly executes zero-token reflex)
     if (goalToRun.startsWith('/')) {
       const slashQuery = goalToRun.slice(1).trim().toLowerCase();
       try {
